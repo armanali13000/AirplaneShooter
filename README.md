@@ -28,38 +28,32 @@ A fast-paced 2D airplane shooting game built with **React Native** and **Expo**.
 
 ### 1. Clone the repository
 ```bash
+
 git clone https://github.com/your-username/air-shooter-game.git
 cd air-shooter-game
+
 2. Install dependencies
-bash
-Copy
-Edit
+
 npm install
+
 3. Start the app in development
-bash
-Copy
-Edit
+
 npx expo start
 Scan the QR code with Expo Go app or run on an emulator.
 
 🛠️ Build APK (Android)
+
 Make sure eas-cli is installed:
 
-bash
-Copy
-Edit
 npm install -g eas-cli
+
 Then build the APK:
 
-bash
-Copy
-Edit
 eas build -p android --profile preview
+
 ⚙️ Project Structure
-pgsql
-Copy
-Edit
-.
+
+AirplaneShooter
 ├── assets/
 │   ├── sounds/
 │   ├── play/
@@ -72,23 +66,20 @@ Edit
 ├── app.json
 ├── eas.json
 └── README.md
+
+
 🧠 Tech Stack
+
 React Native
-
 Expo SDK
-
 expo-av / expo-audio
-
 lottie-react-native
-
 AsyncStorage
 
 
 💡 Future Plans
+
 Global leaderboard (Firebase)
-
 Boss enemies & levels
-
 Multiplayer mode
-
 WebGL version
