@@ -5,22 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Air Shooter is a fast arcade airplane shooter game with power-ups, intense enemy waves, and atmospheric sound."
+      content="Air Shooter is a fast arcade airplane shooter game with enemy waves, power-ups, sound, and resume support."
     />
-    <title>Air Shooter</title>
+    <title>Air Shooter - Arcade Air Combat</title>
     <link rel="icon" href="./assets/favicon.png" />
     <style>
       :root {
-        --ink: #f8fbff;
-        --muted: #b7c4d8;
-        --panel: #101722;
-        --panel-2: #151f2e;
-        --line: rgba(255, 255, 255, 0.14);
-        --cyan: #64d2ff;
-        --gold: #ffb84d;
-        --green: #67e8a5;
-        --red: #ff6a5f;
-        --page: #070b12;
+        --page: #05070d;
+        --ink: #ffffff;
+        --soft: #d7e2f1;
+        --muted: #95a6bd;
+        --line: rgba(255, 255, 255, 0.16);
+        --panel: rgba(9, 15, 25, 0.82);
+        --panel-solid: #0d1420;
+        --gold: #ffbd59;
+        --cyan: #5cc8ff;
+        --red: #ff5f56;
       }
 
       * {
@@ -33,9 +33,10 @@
 
       body {
         margin: 0;
+        min-width: 320px;
         font-family: Arial, Helvetica, sans-serif;
-        background: var(--page);
         color: var(--ink);
+        background: var(--page);
         line-height: 1.55;
       }
 
@@ -50,369 +51,435 @@
       }
 
       .site-header {
-        position: sticky;
+        position: fixed;
         top: 0;
-        z-index: 20;
-        background: rgba(7, 11, 18, 0.86);
+        left: 0;
+        right: 0;
+        z-index: 50;
+        background: rgba(5, 7, 13, 0.72);
         border-bottom: 1px solid var(--line);
-        backdrop-filter: blur(16px);
+        backdrop-filter: blur(18px);
       }
 
       .nav {
-        width: min(1160px, calc(100% - 32px));
-        min-height: 70px;
+        width: min(1240px, calc(100% - 32px));
+        min-height: 74px;
         margin: 0 auto;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 20px;
+        gap: 22px;
       }
 
       .brand {
         display: flex;
         align-items: center;
         gap: 12px;
-        min-width: 0;
+        font-weight: 900;
+        white-space: nowrap;
       }
 
       .brand img {
-        width: 42px;
-        height: 42px;
+        width: 44px;
+        height: 44px;
         border-radius: 8px;
-      }
-
-      .brand-name {
-        font-size: 18px;
-        font-weight: 800;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
       }
 
       .nav-links {
         display: flex;
         align-items: center;
         gap: 22px;
-        color: var(--muted);
+        color: var(--soft);
         font-size: 14px;
-        font-weight: 700;
+        font-weight: 800;
+      }
+
+      .nav-links a {
+        opacity: 0.86;
       }
 
       .nav-links a:hover {
-        color: var(--ink);
+        opacity: 1;
+        color: var(--gold);
       }
 
       .hero {
-        min-height: 86svh;
+        min-height: 100vh;
+        width: 100%;
         position: relative;
         display: grid;
-        align-items: center;
+        align-items: end;
         overflow: hidden;
         background:
-          linear-gradient(90deg, rgba(7, 11, 18, 0.96) 0%, rgba(7, 11, 18, 0.68) 42%, rgba(7, 11, 18, 0.2) 100%),
-          linear-gradient(180deg, rgba(7, 11, 18, 0) 72%, var(--page) 100%),
+          linear-gradient(90deg, rgba(5, 7, 13, 0.94) 0%, rgba(5, 7, 13, 0.58) 45%, rgba(5, 7, 13, 0.16) 100%),
+          linear-gradient(180deg, rgba(5, 7, 13, 0.16) 0%, rgba(5, 7, 13, 0.1) 62%, var(--page) 100%),
           url("./assets/backgrounds/menu-bg.jpg") center / cover no-repeat;
       }
 
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 18% 26%, rgba(92, 200, 255, 0.18), transparent 26%),
+          radial-gradient(circle at 78% 62%, rgba(255, 189, 89, 0.12), transparent 24%);
+      }
+
       .hero-inner {
-        width: min(1160px, calc(100% - 32px));
+        width: min(1240px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 86px 0 76px;
+        position: relative;
+        z-index: 1;
+        padding: 132px 0 72px;
       }
 
       .eyebrow {
         width: fit-content;
-        color: var(--cyan);
-        border: 1px solid rgba(100, 210, 255, 0.35);
-        background: rgba(100, 210, 255, 0.08);
-        border-radius: 999px;
         padding: 8px 12px;
+        border: 1px solid rgba(255, 189, 89, 0.44);
+        border-radius: 999px;
+        color: var(--gold);
+        background: rgba(255, 189, 89, 0.12);
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 900;
+        letter-spacing: 0;
         text-transform: uppercase;
       }
 
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        line-height: 1.05;
+      }
+
       h1 {
-        max-width: 780px;
-        margin: 18px 0 16px;
-        font-size: clamp(48px, 9vw, 118px);
-        line-height: 0.92;
+        max-width: 820px;
+        margin-top: 18px;
+        font-size: clamp(56px, 11vw, 138px);
+        font-weight: 950;
       }
 
       .hero-copy {
-        max-width: 610px;
-        margin: 0;
-        color: #d6e2f2;
-        font-size: clamp(17px, 2vw, 22px);
+        max-width: 660px;
+        margin: 18px 0 0;
+        color: var(--soft);
+        font-size: clamp(18px, 2vw, 23px);
       }
 
       .hero-actions {
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
-        margin-top: 30px;
+        margin-top: 32px;
       }
 
       .button {
-        min-height: 48px;
+        min-height: 50px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         border-radius: 8px;
-        padding: 0 18px;
-        font-weight: 800;
-        border: 1px solid transparent;
+        padding: 0 20px;
+        border: 1px solid var(--line);
+        font-weight: 900;
       }
 
       .button.primary {
+        border-color: transparent;
+        color: #1d1202;
         background: var(--gold);
-        color: #1d1302;
+        box-shadow: 0 16px 38px rgba(255, 189, 89, 0.24);
       }
 
       .button.secondary {
         color: var(--ink);
-        border-color: var(--line);
         background: rgba(255, 255, 255, 0.08);
       }
 
-      .hero-stats {
+      .hero-strip {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-        max-width: 620px;
-        margin-top: 36px;
-      }
-
-      .stat {
+        gap: 1px;
+        width: min(760px, 100%);
+        margin-top: 46px;
+        overflow: hidden;
         border: 1px solid var(--line);
-        background: rgba(16, 23, 34, 0.72);
         border-radius: 8px;
-        padding: 16px;
+        background: var(--line);
       }
 
-      .stat strong {
+      .hero-stat {
+        padding: 18px;
+        background: rgba(9, 15, 25, 0.82);
+      }
+
+      .hero-stat strong {
         display: block;
-        color: var(--ink);
-        font-size: 22px;
+        font-size: 24px;
       }
 
-      .stat span {
+      .hero-stat span {
         color: var(--muted);
         font-size: 13px;
+        font-weight: 700;
       }
 
       main {
         background:
-          linear-gradient(180deg, var(--page) 0%, #0c111a 48%, #070b12 100%);
+          linear-gradient(180deg, var(--page) 0%, #0c111b 42%, #05070d 100%);
       }
 
-      section {
-        width: min(1160px, calc(100% - 32px));
+      .section {
+        width: min(1240px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 72px 0;
+        padding: 84px 0;
       }
 
       .section-head {
-        max-width: 720px;
-        margin-bottom: 28px;
+        max-width: 760px;
+        margin-bottom: 34px;
       }
 
       .kicker {
-        margin: 0 0 8px;
-        color: var(--gold);
+        margin: 0 0 10px;
+        color: var(--cyan);
         font-size: 12px;
         font-weight: 900;
         text-transform: uppercase;
       }
 
       h2 {
-        margin: 0;
-        font-size: clamp(30px, 5vw, 56px);
-        line-height: 1.02;
+        font-size: clamp(32px, 5vw, 62px);
+      }
+
+      .section-head p,
+      .about-copy p,
+      .contact-copy,
+      .card p,
+      .loadout p {
+        color: var(--muted);
       }
 
       .section-head p {
         margin: 14px 0 0;
-        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .about-layout {
+        display: grid;
+        grid-template-columns: 0.95fr 1.05fr;
+        gap: 22px;
+        align-items: stretch;
+      }
+
+      .about-art {
+        min-height: 460px;
+        position: relative;
+        overflow: hidden;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background:
+          linear-gradient(180deg, rgba(5, 7, 13, 0.08), rgba(5, 7, 13, 0.9)),
+          url("./assets/backgrounds/menu-bg.jpg") center / cover no-repeat;
+      }
+
+      .about-art .player {
+        width: min(46%, 270px);
+        position: absolute;
+        left: 50%;
+        bottom: 12%;
+        transform: translateX(-50%);
+        filter: drop-shadow(0 28px 34px rgba(0, 0, 0, 0.7));
+      }
+
+      .about-art .enemy {
+        width: 92px;
+        position: absolute;
+        top: 18%;
+        right: 20%;
+      }
+
+      .about-art .shield {
+        width: 76px;
+        position: absolute;
+        top: 28%;
+        left: 18%;
+      }
+
+      .about-copy {
+        display: grid;
+        align-content: center;
+        gap: 18px;
+        padding: 34px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .about-copy p {
+        margin: 0;
         font-size: 17px;
       }
 
       .feature-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 14px;
+        gap: 16px;
       }
 
-      .feature-card,
-      .loadout-card {
+      .card {
+        min-height: 210px;
+        padding: 22px;
         border: 1px solid var(--line);
-        background: var(--panel);
         border-radius: 8px;
-        padding: 20px;
+        background: var(--panel-solid);
       }
 
-      .feature-card h3,
-      .loadout-card h3 {
-        margin: 0 0 8px;
-        font-size: 18px;
-      }
-
-      .feature-card p,
-      .loadout-card p {
-        margin: 0;
-        color: var(--muted);
-      }
-
-      .feature-mark {
-        width: 38px;
-        height: 38px;
+      .card-number {
+        width: 42px;
+        height: 42px;
         display: grid;
         place-items: center;
-        margin-bottom: 18px;
+        margin-bottom: 20px;
         border-radius: 8px;
         color: #071018;
-        font-weight: 900;
-      }
-
-      .cyan {
         background: var(--cyan);
+        font-weight: 950;
       }
 
-      .gold {
+      .card:nth-child(2) .card-number {
         background: var(--gold);
       }
 
-      .green {
-        background: var(--green);
+      .card:nth-child(3) .card-number {
+        background: #72f0a2;
       }
 
-      .red {
+      .card:nth-child(4) .card-number {
         background: var(--red);
       }
 
-      .showcase {
-        display: grid;
-        grid-template-columns: 1.05fr 0.95fr;
-        gap: 18px;
-        align-items: stretch;
+      .card h3 {
+        font-size: 20px;
       }
 
-      .screen {
-        min-height: 520px;
-        position: relative;
-        overflow: hidden;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background:
-          linear-gradient(180deg, rgba(7, 11, 18, 0.08), rgba(7, 11, 18, 0.86)),
-          url("./assets/backgrounds/menu-bg.jpg") center / cover no-repeat;
-      }
-
-      .ship {
-        position: absolute;
-        width: min(42%, 260px);
-        left: 50%;
-        bottom: 20%;
-        transform: translateX(-50%);
-        filter: drop-shadow(0 26px 32px rgba(0, 0, 0, 0.6));
-      }
-
-      .enemy {
-        position: absolute;
-        width: 96px;
-        right: 18%;
-        top: 17%;
-        opacity: 0.92;
-      }
-
-      .power {
-        position: absolute;
-        width: 74px;
-        left: 17%;
-        top: 28%;
-      }
-
-      .shot {
-        position: absolute;
-        width: 5px;
-        height: 110px;
-        left: 50%;
-        bottom: 48%;
-        border-radius: 999px;
-        background: var(--gold);
-        box-shadow: 0 0 22px var(--gold);
+      .card p {
+        margin: 10px 0 0;
       }
 
       .loadout {
         display: grid;
-        gap: 14px;
-      }
-
-      .loadout-card {
-        display: grid;
-        grid-template-columns: 72px 1fr;
-        align-items: center;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 16px;
-        background: var(--panel-2);
       }
 
-      .loadout-card img {
-        width: 72px;
-        height: 72px;
-        object-fit: contain;
+      .loadout-item {
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: rgba(255, 255, 255, 0.06);
-        padding: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        overflow: hidden;
       }
 
-      .cta-band {
-        width: 100%;
+      .loadout-media {
+        min-height: 160px;
+        display: grid;
+        place-items: center;
+        background:
+          linear-gradient(180deg, rgba(92, 200, 255, 0.12), rgba(255, 189, 89, 0.06)),
+          #101826;
+      }
+
+      .loadout-media img {
+        width: 104px;
+        height: 104px;
+        object-fit: contain;
+      }
+
+      .loadout-body {
+        padding: 20px;
+      }
+
+      .loadout p {
+        margin: 8px 0 0;
+      }
+
+      .contact-band {
         border-top: 1px solid var(--line);
         border-bottom: 1px solid var(--line);
         background:
-          linear-gradient(90deg, rgba(255, 184, 77, 0.18), rgba(100, 210, 255, 0.08)),
-          #0d131d;
+          linear-gradient(90deg, rgba(92, 200, 255, 0.14), rgba(255, 189, 89, 0.16)),
+          #0b111b;
       }
 
-      .cta {
+      .contact {
         display: grid;
-        grid-template-columns: 1fr auto;
+        grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
-        gap: 24px;
-        padding: 46px 0;
+        gap: 28px;
+        padding: 58px 0;
       }
 
-      .cta h2 {
-        font-size: clamp(28px, 4vw, 44px);
+      .contact h2 {
+        font-size: clamp(30px, 4vw, 48px);
       }
 
-      .cta p {
+      .contact-copy {
         max-width: 680px;
-        margin: 10px 0 0;
-        color: var(--muted);
+        margin: 12px 0 0;
+        font-size: 17px;
       }
 
       .footer {
-        width: min(1160px, calc(100% - 32px));
+        background: #05070d;
+      }
+
+      .footer-inner {
+        width: min(1240px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 34px 0;
+        padding: 42px 0;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 28px;
+        border-top: 1px solid var(--line);
+      }
+
+      .footer-brand {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 18px;
+        gap: 12px;
+        font-weight: 900;
+      }
+
+      .footer-brand img {
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+      }
+
+      .footer-note {
+        margin: 14px 0 0;
         color: var(--muted);
-        border-top: 1px solid var(--line);
       }
 
       .footer-links {
         display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         gap: 18px;
+        color: var(--soft);
+        font-weight: 800;
       }
 
-      .footer a:hover {
-        color: var(--ink);
+      .footer-links a:hover {
+        color: var(--gold);
       }
 
-      @media (max-width: 860px) {
+      @media (max-width: 920px) {
         .nav {
-          min-height: 64px;
+          min-height: 68px;
         }
 
         .nav-links {
@@ -420,49 +487,55 @@
           font-size: 13px;
         }
 
-        .hero {
-          min-height: 84svh;
-          background:
-            linear-gradient(180deg, rgba(7, 11, 18, 0.86) 0%, rgba(7, 11, 18, 0.48) 58%, var(--page) 100%),
-            url("./assets/backgrounds/menu-bg.jpg") center / cover no-repeat;
-        }
-
-        .hero-stats,
-        .feature-grid,
-        .showcase,
-        .cta {
+        .about-layout,
+        .contact,
+        .footer-inner {
           grid-template-columns: 1fr;
         }
 
-        .feature-grid {
+        .feature-grid,
+        .loadout {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        .screen {
-          min-height: 440px;
-        }
-
-        .cta .button {
-          width: fit-content;
+        .footer-links {
+          justify-content: flex-start;
         }
       }
 
-      @media (max-width: 560px) {
-        .brand-name {
-          font-size: 16px;
+      @media (max-width: 620px) {
+        .site-header {
+          position: absolute;
         }
 
-        .nav-links a:not(:last-child) {
-          display: none;
+        .nav {
+          align-items: flex-start;
+          flex-direction: column;
+          justify-content: center;
+          padding: 14px 0;
+        }
+
+        .nav-links {
+          width: 100%;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+
+        .hero {
+          min-height: 100svh;
+          background:
+            linear-gradient(180deg, rgba(5, 7, 13, 0.82) 0%, rgba(5, 7, 13, 0.44) 54%, var(--page) 100%),
+            url("./assets/backgrounds/menu-bg.jpg") center / cover no-repeat;
         }
 
         .hero-inner {
-          padding: 64px 0 54px;
+          padding: 168px 0 46px;
         }
 
         .hero-actions,
-        .hero-stats,
-        .feature-grid {
+        .hero-strip,
+        .feature-grid,
+        .loadout {
           grid-template-columns: 1fr;
         }
 
@@ -474,34 +547,16 @@
           width: 100%;
         }
 
-        section {
-          padding: 52px 0;
+        .section {
+          padding: 58px 0;
         }
 
-        .screen {
-          min-height: 360px;
+        .about-art {
+          min-height: 340px;
         }
 
-        .enemy {
-          width: 72px;
-        }
-
-        .power {
-          width: 58px;
-        }
-
-        .loadout-card {
-          grid-template-columns: 58px 1fr;
-        }
-
-        .loadout-card img {
-          width: 58px;
-          height: 58px;
-        }
-
-        .footer {
-          flex-direction: column;
-          align-items: flex-start;
+        .about-copy {
+          padding: 22px;
         }
       }
     </style>
@@ -509,153 +564,194 @@
   <body>
     <header class="site-header">
       <nav class="nav" aria-label="Primary navigation">
-        <a class="brand" href="./index.html">
+        <a class="brand" href="#home">
           <img src="./assets/icon.png" alt="Air Shooter icon" />
-          <span class="brand-name">Air Shooter</span>
+          <span>Air Shooter</span>
         </a>
         <div class="nav-links">
+          <a href="#home">Home</a>
+          <a href="#about">About</a>
           <a href="#gameplay">Gameplay</a>
-          <a href="#arsenal">Arsenal</a>
-          <a href="./privacy-policy.html">Privacy</a>
+          <a href="#contact">Contact</a>
+          <a href="./privacy-policy.html">Privacy Policy</a>
         </div>
       </nav>
     </header>
 
-    <section class="hero" aria-label="Air Shooter">
+    <section id="home" class="hero" aria-label="Air Shooter home">
       <div class="hero-inner">
         <p class="eyebrow">Arcade Air Combat</p>
         <h1>Air Shooter</h1>
         <p class="hero-copy">
-          Fly through hostile skies, dodge enemy waves, collect power-ups, and
-          chase a cleaner high score with every run.
+          A fast airplane shooting game built for quick action, sharp dodges,
+          enemy waves, power-ups, and high-score runs.
         </p>
         <div class="hero-actions">
-          <a class="button primary" href="#gameplay">View Gameplay</a>
-          <a class="button secondary" href="./privacy-policy.html">Privacy Policy</a>
+          <a class="button primary" href="#gameplay">Explore Gameplay</a>
+          <a class="button secondary" href="#contact">Contact Developer</a>
         </div>
-        <div class="hero-stats" aria-label="Game highlights">
-          <div class="stat">
-            <strong>2D</strong>
-            <span>Arcade shooter</span>
-          </div>
-          <div class="stat">
+        <div class="hero-strip" aria-label="Game highlights">
+          <div class="hero-stat">
             <strong>Fast</strong>
-            <span>Enemy waves</span>
+            <span>Arcade missions</span>
           </div>
-          <div class="stat">
+          <div class="hero-stat">
+            <strong>Power</strong>
+            <span>Shield and double shot</span>
+          </div>
+          <div class="hero-stat">
             <strong>Offline</strong>
-            <span>Play focused</span>
+            <span>Focused play</span>
           </div>
         </div>
       </div>
     </section>
 
     <main>
-      <section id="gameplay">
+      <section id="about" class="section">
         <div class="section-head">
-          <p class="kicker">Mission Profile</p>
-          <h2>Built for quick, intense runs.</h2>
+          <p class="kicker">About</p>
+          <h2>Designed for clean, intense air combat.</h2>
           <p>
-            Air Shooter keeps the action direct: move, fire, survive, and time
-            each pickup before the sky gets crowded.
+            Air Shooter keeps the screen readable and the action direct, so each
+            run is easy to start and satisfying to improve.
+          </p>
+        </div>
+
+        <div class="about-layout">
+          <div class="about-art" aria-label="Air Shooter artwork">
+            <img class="enemy" src="./assets/play/enemy.png" alt="Enemy aircraft" />
+            <img class="shield" src="./assets/powerups/shield.png" alt="Shield power-up" />
+            <img class="player" src="./assets/play/player.png" alt="Player aircraft" />
+          </div>
+          <div class="about-copy">
+            <p>
+              Fly through hostile skies, avoid incoming enemies, collect
+              powerful upgrades, and keep pushing your score higher.
+            </p>
+            <p>
+              The game includes pause and resume support, sound controls, music,
+              power-ups, enemy movement, and custom game assets.
+            </p>
+            <p><strong>Developed by Arman.</strong></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="gameplay" class="section">
+        <div class="section-head">
+          <p class="kicker">Gameplay</p>
+          <h2>Everything is built around quick decisions.</h2>
+          <p>
+            Move, shoot, dodge, collect, and survive. The loop is simple, but
+            every run gets more demanding as the screen fills with danger.
           </p>
         </div>
 
         <div class="feature-grid">
-          <article class="feature-card">
-            <div class="feature-mark cyan">01</div>
+          <article class="card">
+            <div class="card-number">01</div>
             <h3>Responsive Flight</h3>
-            <p>Simple controls keep the focus on dodging, positioning, and shooting.</p>
+            <p>Simple movement makes it easy to focus on positioning and timing.</p>
           </article>
-          <article class="feature-card">
-            <div class="feature-mark gold">02</div>
+          <article class="card">
+            <div class="card-number">02</div>
+            <h3>Enemy Waves</h3>
+            <p>Incoming aircraft keep pressure high and make each score matter.</p>
+          </article>
+          <article class="card">
+            <div class="card-number">03</div>
             <h3>Power-Ups</h3>
-            <p>Shield and double-shot pickups help turn pressure into momentum.</p>
+            <p>Shield and double shot pickups help you recover and push forward.</p>
           </article>
-          <article class="feature-card">
-            <div class="feature-mark green">03</div>
-            <h3>Resume Runs</h3>
-            <p>Pause and continue your current game without losing the score chase.</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-mark red">04</div>
+          <article class="card">
+            <div class="card-number">04</div>
             <h3>Sound Control</h3>
-            <p>Toggle music and effects from settings for the way you like to play.</p>
+            <p>Music and effects can be adjusted from the game settings.</p>
           </article>
         </div>
       </section>
 
-      <section id="arsenal">
+      <section class="section">
         <div class="section-head">
-          <p class="kicker">Flight Deck</p>
-          <h2>A compact arcade battlefield.</h2>
+          <p class="kicker">Arsenal</p>
+          <h2>Clear visuals for fast play.</h2>
           <p>
-            The game uses bold silhouettes, bright pickups, and clear threats so
-            every decision reads quickly while the pace climbs.
+            Air Shooter uses readable aircraft and power-up art so every pickup
+            and enemy is easy to identify during action.
           </p>
         </div>
 
-        <div class="showcase">
-          <div class="screen" aria-label="Air Shooter gameplay artwork">
-            <img class="enemy" src="./assets/play/enemy.png" alt="Enemy aircraft" />
-            <img class="power" src="./assets/powerups/shield.png" alt="Shield power-up" />
-            <span class="shot" aria-hidden="true"></span>
-            <img class="ship" src="./assets/play/player.png" alt="Player aircraft" />
-          </div>
-
-          <div class="loadout">
-            <article class="loadout-card">
+        <div class="loadout">
+          <article class="loadout-item">
+            <div class="loadout-media">
               <img src="./assets/play/player.png" alt="Player aircraft" />
-              <div>
-                <h3>Player Aircraft</h3>
-                <p>Clean movement and steady fire for high-score runs.</p>
-              </div>
-            </article>
-            <article class="loadout-card">
+            </div>
+            <div class="loadout-body">
+              <h3>Player Aircraft</h3>
+              <p>Your main ship for every mission.</p>
+            </div>
+          </article>
+          <article class="loadout-item">
+            <div class="loadout-media">
               <img src="./assets/play/enemy.png" alt="Enemy aircraft" />
-              <div>
-                <h3>Enemy Waves</h3>
-                <p>Incoming threats push each run into faster reactions.</p>
-              </div>
-            </article>
-            <article class="loadout-card">
+            </div>
+            <div class="loadout-body">
+              <h3>Enemy Aircraft</h3>
+              <p>Threats that push your reflexes.</p>
+            </div>
+          </article>
+          <article class="loadout-item">
+            <div class="loadout-media">
               <img src="./assets/powerups/double.png" alt="Double shot power-up" />
-              <div>
-                <h3>Double Shot</h3>
-                <p>Boost your firepower when the screen starts filling up.</p>
-              </div>
-            </article>
-            <article class="loadout-card">
+            </div>
+            <div class="loadout-body">
+              <h3>Double Shot</h3>
+              <p>Extra firepower when things get crowded.</p>
+            </div>
+          </article>
+          <article class="loadout-item">
+            <div class="loadout-media">
               <img src="./assets/powerups/shield.png" alt="Shield power-up" />
-              <div>
-                <h3>Shield</h3>
-                <p>Stay alive long enough to recover and climb the score.</p>
-              </div>
-            </article>
-          </div>
+            </div>
+            <div class="loadout-body">
+              <h3>Shield</h3>
+              <p>Protection that gives you room to recover.</p>
+            </div>
+          </article>
         </div>
       </section>
 
-      <div class="cta-band">
-        <section class="cta" aria-label="Air Shooter Android">
+      <div id="contact" class="contact-band">
+        <section class="section contact" aria-label="Contact">
           <div>
-            <p class="kicker">Android Game</p>
-            <h2>Ready for the next mission.</h2>
-            <p>
-              Air Shooter is prepared as an Android app with a Play Store-ready
-              package, version code, and privacy policy.
+            <p class="kicker">Contact</p>
+            <h2>Questions about Air Shooter?</h2>
+            <p class="contact-copy">
+              Reach out for support, publishing questions, or app information.
+              Developed by Arman.
             </p>
           </div>
-          <a class="button primary" href="./privacy-policy.html">Privacy Policy</a>
+          <a class="button primary" href="mailto:armanali.dev@gmail.com">Contact Arman</a>
         </section>
       </div>
     </main>
 
     <footer class="footer">
-      <span>© 2026 Air Shooter</span>
-      <div class="footer-links">
-        <a href="./index.html">Home</a>
-        <a href="./privacy-policy.html">Privacy Policy</a>
+      <div class="footer-inner">
+        <div>
+          <a class="footer-brand" href="#home">
+            <img src="./assets/icon.png" alt="Air Shooter icon" />
+            <span>Air Shooter</span>
+          </a>
+          <p class="footer-note">Developed by Arman. (c) 2026 Air Shooter.</p>
+        </div>
+        <div class="footer-links">
+          <a href="#home">Home</a>
+          <a href="#about">About</a>
+          <a href="#contact">Contact</a>
+          <a href="./privacy-policy.html">Privacy Policy</a>
+        </div>
       </div>
     </footer>
   </body>
