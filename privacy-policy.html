@@ -156,19 +156,66 @@
       }
 
       .footer {
+        background: rgba(5, 7, 13, 0.96);
+      }
+
+      .footer-inner {
         width: min(980px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 30px 0;
-        display: flex;
-        justify-content: space-between;
-        gap: 18px;
-        color: var(--muted);
+        padding: 46px 0 26px;
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr 1fr;
+        gap: 28px;
         border-top: 1px solid var(--line);
       }
 
-      .footer-links {
+      .footer-brand {
         display: flex;
-        gap: 18px;
+        align-items: center;
+        gap: 12px;
+        font-weight: 900;
+      }
+
+      .footer-brand img {
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+      }
+
+      .footer-note {
+        max-width: 330px;
+        margin: 14px 0 0;
+        color: var(--muted);
+      }
+
+      .footer-title {
+        margin: 0 0 14px;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      .footer-links,
+      .footer-meta {
+        display: grid;
+        gap: 10px;
+      }
+
+      .footer-links a,
+      .footer-meta p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .footer-bottom {
+        width: min(980px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 18px 0 30px;
+        color: var(--muted);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 14px;
       }
 
       @media (max-width: 560px) {
@@ -188,8 +235,8 @@
           padding: 18px;
         }
 
-        .footer {
-          flex-direction: column;
+        .footer-inner {
+          grid-template-columns: 1fr;
         }
       }
     </style>
@@ -215,7 +262,6 @@
         <p class="eyebrow">Privacy Policy</p>
         <h1>How Air Shooter handles data.</h1>
         <p class="updated">Last updated: June 20, 2026</p>
-        <p class="updated">Developed by Arman.</p>
       </div>
 
       <section>
@@ -293,18 +339,40 @@
         <h2>Contact</h2>
         <p>
           If you have questions about this Privacy Policy, contact us at:
-          <a class="content-link" href="mailto:armanali.dev@gmail.com">armanali.dev@gmail.com</a>
+          <a class="content-link" href="mailto:darkdevil7325@gmail.com">darkdevil7325@gmail.com</a>
         </p>
       </section>
     </main>
 
     <footer class="footer">
-      <span>Developed by Arman. (c) 2026 Air Shooter.</span>
-      <div class="footer-links">
-        <a href="./index.html">Home</a>
-        <a href="./index.html#about">About</a>
-        <a href="./index.html#contact">Contact</a>
-        <a href="./privacy-policy.html">Privacy Policy</a>
+      <div class="footer-inner">
+        <div>
+          <a class="footer-brand" href="./index.html">
+            <img src="./assets/icon.png" alt="Air Shooter icon" />
+            <span>Air Shooter</span>
+          </a>
+          <p class="footer-note">
+            Privacy information for the Air Shooter Android game.
+          </p>
+        </div>
+        <div>
+          <p class="footer-title">Explore</p>
+          <div class="footer-links">
+            <a href="./index.html">Home</a>
+            <a href="./index.html#about">About</a>
+            <a href="./index.html#contact">Contact</a>
+          </div>
+        </div>
+        <div>
+          <p class="footer-title">Support</p>
+          <div class="footer-links">
+            <a href="mailto:darkdevil7325@gmail.com">darkdevil7325@gmail.com</a>
+            <a href="./privacy-policy.html">Privacy Policy</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>(c) 2026 Air Shooter. All rights reserved.</span>
       </div>
     </footer>
   </body>
