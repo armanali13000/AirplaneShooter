@@ -416,8 +416,8 @@
 
       .contact {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: center;
+        grid-template-columns: 0.85fr 1.15fr;
+        align-items: start;
         gap: 28px;
         padding: 58px 0;
       }
@@ -430,6 +430,62 @@
         max-width: 680px;
         margin: 12px 0 0;
         font-size: 17px;
+      }
+
+      .contact-form {
+        display: grid;
+        gap: 14px;
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(5, 7, 13, 0.42);
+      }
+
+      .field-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      label {
+        display: grid;
+        gap: 7px;
+        color: var(--soft);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      input,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--ink);
+        font: inherit;
+        outline: none;
+      }
+
+      input {
+        min-height: 48px;
+        padding: 0 14px;
+      }
+
+      textarea {
+        min-height: 138px;
+        resize: vertical;
+        padding: 13px 14px;
+      }
+
+      input::placeholder,
+      textarea::placeholder {
+        color: #7f90a8;
+      }
+
+      input:focus,
+      textarea:focus {
+        border-color: rgba(92, 200, 255, 0.75);
+        box-shadow: 0 0 0 3px rgba(92, 200, 255, 0.12);
       }
 
       .footer {
@@ -535,7 +591,8 @@
         .hero-actions,
         .hero-strip,
         .feature-grid,
-        .loadout {
+        .loadout,
+        .field-row {
           grid-template-columns: 1fr;
         }
 
@@ -728,11 +785,31 @@
             <p class="kicker">Contact</p>
             <h2>Questions about Air Shooter?</h2>
             <p class="contact-copy">
-              Reach out for support, publishing questions, or app information.
-              Developed by Arman.
+              Send a message for support, publishing questions, or app
+              information.
             </p>
           </div>
-          <a class="button primary" href="mailto:armanali.dev@gmail.com">Contact Arman</a>
+          <form class="contact-form">
+            <div class="field-row">
+              <label>
+                Name
+                <input type="text" name="name" placeholder="Your name" />
+              </label>
+              <label>
+                Email
+                <input type="email" name="email" placeholder="you@example.com" />
+              </label>
+            </div>
+            <label>
+              Subject
+              <input type="text" name="subject" placeholder="How can we help?" />
+            </label>
+            <label>
+              Message
+              <textarea name="message" placeholder="Write your message"></textarea>
+            </label>
+            <button class="button primary" type="submit">Send Message</button>
+          </form>
         </section>
       </div>
     </main>
