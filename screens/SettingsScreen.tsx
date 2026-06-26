@@ -267,7 +267,7 @@ export default function SettingsScreen({ navigation }: any) {
         </View>
 
         <View style={styles.infoPanel}>
-          <Text style={styles.infoText}>Version 1.0.0</Text>
+          <Text style={styles.infoText}>Version 2.0.0</Text>
           <Text style={styles.infoText}>Developed by Arman</Text>
         </View>
       </ScrollView>
