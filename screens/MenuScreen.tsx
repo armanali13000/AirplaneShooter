@@ -26,6 +26,7 @@ const createStars = (count: number): Star[] =>
 
 export default function MenuScreen({ navigation }: any) {
   const [paused, setPaused] = useState(false);
+  const [choosingDifficulty, setChoosingDifficulty] = useState(false);
   const [stars, setStars] = useState<Star[]>(() => createStars(28));
   const drift = useRef(new Animated.Value(0)).current;
   const glow = useRef(new Animated.Value(0)).current;
@@ -83,13 +84,22 @@ export default function MenuScreen({ navigation }: any) {
   }, [drift, glow]);
 
   const handleResume = async () => {
-    await AsyncStorage.removeItem('paused');
     navigation.navigate('Game');
   };
 
   const handleRestart = async () => {
-    await AsyncStorage.multiRemove(['paused', 'savedScore']);
-    navigation.navigate('Game');
+    await AsyncStorage.multiRemove(['paused', 'savedScore', 'savedGameState']);
+    setChoosingDifficulty(true);
+  };
+
+  const handlePlay = async (difficulty: 'easy' | 'medium' | 'hard' | 'veryHard') => {
+    await AsyncStorage.multiSet([
+      ['selectedDifficulty', difficulty],
+      ['difficulty', difficulty],
+    ]);
+    await AsyncStorage.multiRemove(['paused', 'savedScore', 'savedGameState']);
+    setChoosingDifficulty(false);
+    navigation.navigate('Game', { newGame: Date.now() });
   };
 
   const handleExit = async () => {
@@ -140,32 +150,51 @@ export default function MenuScreen({ navigation }: any) {
       <View style={styles.scrim} />
       <View style={styles.container}>
         <View style={styles.brandBlock}>
-          <Text style={styles.title}>Air Shooter</Text>
+          <Text style={styles.title}>🚀 Air Shooter 🚀</Text>
           <Text style={styles.subtitle}>Fast sky combat</Text>
         </View>
 
         <View style={styles.menuPanel}>
-          {paused ? (
+          {choosingDifficulty ? (
+            <>
+              <Text style={styles.chooseTitle}>Select Level</Text>
+              <TouchableOpacity style={styles.button} onPress={() => handlePlay('easy')}>
+                <Text style={styles.buttonText}>🟢 Easy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => handlePlay('medium')}>
+                <Text style={styles.buttonText}>🔵 Medium</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => handlePlay('hard')}>
+                <Text style={styles.buttonText}>🟠 Hard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => handlePlay('veryHard')}>
+                <Text style={styles.buttonText}>🔴 Very Hard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.exitButton} onPress={() => setChoosingDifficulty(false)}>
+                <Text style={styles.exitText}>⬅️ Back</Text>
+              </TouchableOpacity>
+            </>
+          ) : paused ? (
             <>
               <TouchableOpacity style={styles.button} onPress={handleResume}>
-                <Text style={styles.buttonText}>Resume</Text>
+                <Text style={styles.buttonText}>▶️ Resume</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.button} onPress={handleRestart}>
-                <Text style={styles.buttonText}>Restart</Text>
+                <Text style={styles.buttonText}>🔄 Restart</Text>
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Game')}>
-              <Text style={styles.buttonText}>Play</Text>
+            <TouchableOpacity style={styles.button} onPress={() => setChoosingDifficulty(true)}>
+              <Text style={styles.buttonText}>▶️ Play</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Settings')}>
-            <Text style={styles.buttonText}>Settings</Text>
+            <Text style={styles.buttonText}>⚙️ Settings</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.exitButton} onPress={handleExit}>
-            <Text style={styles.exitText}>Exit</Text>
+            <Text style={styles.exitText}>❌ Exit</Text>
           </TouchableOpacity>
         </View>
 
@@ -222,6 +251,13 @@ const styles = StyleSheet.create({
   menuPanel: {
     width: '74%',
     maxWidth: 330,
+  },
+  chooseTitle: {
+    color: '#ffd166',
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   button: {
     minHeight: 58,

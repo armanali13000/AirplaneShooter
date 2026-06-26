@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Dimensions,
   Image,
   PanResponder,
@@ -9,7 +8,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  setIsAudioActiveAsync,
+} from 'expo-audio';
 import LottieView from 'lottie-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -25,25 +28,44 @@ const PLAYER_BULLET_SPEED = 720;
 const ENEMY_BULLET_SPEED = 430;
 const POWER_UP_SPEED = 150;
 const DAMAGE_COOLDOWN_MS = 450;
+const SAVED_GAME_KEY = 'savedGameState';
 
-type Difficulty = 'easy' | 'normal' | 'hard';
+type Difficulty = 'easy' | 'medium' | 'hard' | 'veryHard';
 type FireRate = 'steady' | 'fast' | 'rapid';
 type Bullet = { id: number; x: number; y: number };
 type Enemy = { id: number; x: number; y: number; shootTimer: number };
 type EnemyBullet = { id: number; x: number; y: number };
 type Explosion = { id: number; x: number; y: number; createdAt: number };
-type PowerUp = { id: number; x: number; y: number; type: 'shield' | 'double' };
+type PowerUp = { id: number; x: number; y: number; type: 'shield' | 'double' | 'health' };
+type AudioPlayerRef = ReturnType<typeof createAudioPlayer>;
+type SavedGameState = {
+  playerX: number;
+  playerY: number;
+  bullets: Bullet[];
+  enemyBullets: EnemyBullet[];
+  enemies: Enemy[];
+  powerUps: PowerUp[];
+  score: number;
+  health: number;
+  shieldActive: boolean;
+  doubleShotActive: boolean;
+  difficulty: Difficulty;
+  fireRate: FireRate;
+  enemySpawnTimer: number;
+  powerUpSpawnTimer: number;
+};
 
 let globalId = 0;
 const uniqueId = () => globalId++;
 
 const difficultyConfig: Record<
   Difficulty,
-  { enemySpeed: number; spawnMs: number; enemyFireMs: number; bulletDamage: number; collisionDamage: number }
+  { label: string; enemySpeed: number; spawnMs: number; enemyFireMs: number; bulletDamage: number; collisionDamage: number }
 > = {
-  easy: { enemySpeed: 170, spawnMs: 1700, enemyFireMs: 2400, bulletDamage: 18, collisionDamage: 28 },
-  normal: { enemySpeed: 230, spawnMs: 1350, enemyFireMs: 1900, bulletDamage: 25, collisionDamage: 35 },
-  hard: { enemySpeed: 300, spawnMs: 1050, enemyFireMs: 1450, bulletDamage: 32, collisionDamage: 45 },
+  easy: { label: 'Easy', enemySpeed: 165, spawnMs: 1750, enemyFireMs: 2450, bulletDamage: 16, collisionDamage: 26 },
+  medium: { label: 'Medium', enemySpeed: 225, spawnMs: 1350, enemyFireMs: 1900, bulletDamage: 24, collisionDamage: 34 },
+  hard: { label: 'Hard', enemySpeed: 295, spawnMs: 1050, enemyFireMs: 1450, bulletDamage: 31, collisionDamage: 43 },
+  veryHard: { label: 'Very Hard', enemySpeed: 370, spawnMs: 820, enemyFireMs: 1120, bulletDamage: 39, collisionDamage: 54 },
 };
 
 const fireRateMs: Record<FireRate, number> = {
@@ -54,6 +76,27 @@ const fireRateMs: Record<FireRate, number> = {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
 
+const toVolume = (value: string | null, fallback: number) => {
+  const parsed = value === null ? fallback : Number(value);
+  return Number.isFinite(parsed) ? clamp(parsed, 0, 1) : fallback;
+};
+
+const normalizeDifficulty = (value: string | null): Difficulty => {
+  if (value === 'easy' || value === 'hard' || value === 'veryHard') return value;
+  return 'medium';
+};
+
+const normalizeFireRate = (value: string | null): FireRate => {
+  if (value === 'steady' || value === 'rapid') return value;
+  return 'fast';
+};
+
+const lifeColor = (health: number) => {
+  if (health > 55) return '#2af598';
+  if (health > 25) return '#ffd166';
+  return '#ff3b48';
+};
+
 const overlaps = (
   a: { x: number; y: number; width: number; height: number },
   b: { x: number; y: number; width: number; height: number }
@@ -63,7 +106,7 @@ const overlaps = (
   a.y < b.y + b.height &&
   a.y + a.height > b.y;
 
-export default function GameScreen({ navigation }: any) {
+export default function GameScreen({ navigation, route }: any) {
   const [playerX, setPlayerX] = useState(width / 2 - PLAYER_WIDTH / 2);
   const [playerY, setPlayerY] = useState(height - PLAYER_HEIGHT - 50);
   const [bullets, setBullets] = useState<Bullet[]>([]);
@@ -74,14 +117,12 @@ export default function GameScreen({ navigation }: any) {
   const [explosions, setExplosions] = useState<Explosion[]>([]);
   const [shieldActive, setShieldActive] = useState(false);
   const [doubleShotActive, setDoubleShotActive] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [powerUps, setPowerUps] = useState<PowerUp[]>([]);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [musicEnabled, setMusicEnabled] = useState(true);
   const [health, setHealth] = useState(MAX_HEALTH);
-  const [difficulty, setDifficulty] = useState<Difficulty>('normal');
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [fireRate, setFireRate] = useState<FireRate>('fast');
   const [damageFlash, setDamageFlash] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   const playerXRef = useRef(playerX);
   const playerYRef = useRef(playerY);
@@ -96,9 +137,11 @@ export default function GameScreen({ navigation }: any) {
   const gameOverRef = useRef(false);
   const soundEnabledRef = useRef(true);
   const musicEnabledRef = useRef(true);
+  const musicVolumeRef = useRef(0.95);
+  const soundVolumeRef = useRef(0.9);
   const shieldActiveRef = useRef(false);
   const doubleShotActiveRef = useRef(false);
-  const difficultyRef = useRef<Difficulty>('normal');
+  const difficultyRef = useRef<Difficulty>('medium');
   const fireRateRef = useRef<FireRate>('fast');
   const showDamageFlashRef = useRef(true);
   const lastFrameAt = useRef<number | null>(null);
@@ -108,67 +151,194 @@ export default function GameScreen({ navigation }: any) {
   const lastDamageAt = useRef(0);
   const animationFrame = useRef<number | null>(null);
   const gameFocused = useRef(false);
-  const soundsLoaded = useRef(false);
 
-  const shootSound = useRef<Audio.Sound | null>(null);
-  const explosionSound = useRef<Audio.Sound | null>(null);
-  const backgroundMusic = useRef<Audio.Sound | null>(null);
+  const backgroundMusic = useRef<AudioPlayerRef | null>(null);
 
-  const syncSettings = useCallback(async () => {
-    const [savedSound, savedMusic, savedDifficulty, savedFireRate, savedDamageFlash] = await Promise.all([
-      AsyncStorage.getItem('soundEnabled'),
-      AsyncStorage.getItem('musicEnabled'),
-      AsyncStorage.getItem('difficulty'),
-      AsyncStorage.getItem('fireRate'),
-      AsyncStorage.getItem('showDamageFlash'),
+  const applyState = (state: SavedGameState) => {
+    playerXRef.current = state.playerX;
+    playerYRef.current = state.playerY;
+    bulletsRef.current = state.bullets;
+    enemyBulletsRef.current = state.enemyBullets;
+    enemiesRef.current = state.enemies;
+    powerUpsRef.current = state.powerUps;
+    scoreRef.current = state.score;
+    healthRef.current = state.health;
+    shieldActiveRef.current = state.shieldActive;
+    doubleShotActiveRef.current = state.doubleShotActive;
+    difficultyRef.current = state.difficulty;
+    fireRateRef.current = state.fireRate;
+    enemySpawnTimer.current = state.enemySpawnTimer;
+    powerUpSpawnTimer.current = state.powerUpSpawnTimer;
+
+    setPlayerX(state.playerX);
+    setPlayerY(state.playerY);
+    setBullets([...state.bullets]);
+    setEnemyBullets([...state.enemyBullets]);
+    setEnemies([...state.enemies]);
+    setPowerUps([...state.powerUps]);
+    setScore(state.score);
+    setHealth(state.health);
+    setShieldActive(state.shieldActive);
+    setDoubleShotActive(state.doubleShotActive);
+    setDifficulty(state.difficulty);
+    setFireRate(state.fireRate);
+  };
+
+  const getSnapshot = (): SavedGameState => ({
+    playerX: playerXRef.current,
+    playerY: playerYRef.current,
+    bullets: bulletsRef.current,
+    enemyBullets: enemyBulletsRef.current,
+    enemies: enemiesRef.current,
+    powerUps: powerUpsRef.current,
+    score: scoreRef.current,
+    health: healthRef.current,
+    shieldActive: shieldActiveRef.current,
+    doubleShotActive: doubleShotActiveRef.current,
+    difficulty: difficultyRef.current,
+    fireRate: fireRateRef.current,
+    enemySpawnTimer: enemySpawnTimer.current,
+    powerUpSpawnTimer: powerUpSpawnTimer.current,
+  });
+
+  const savePausedGame = useCallback(async () => {
+    await AsyncStorage.multiSet([
+      ['paused', 'true'],
+      ['savedScore', scoreRef.current.toString()],
+      [SAVED_GAME_KEY, JSON.stringify(getSnapshot())],
     ]);
-
-    const nextSound = savedSound === null || savedSound === 'true';
-    const nextMusic = savedMusic === null || savedMusic === 'true';
-    const nextDifficulty = savedDifficulty === 'easy' || savedDifficulty === 'hard' ? savedDifficulty : 'normal';
-    const nextFireRate =
-      savedFireRate === 'steady' || savedFireRate === 'rapid' ? savedFireRate : 'fast';
-
-    soundEnabledRef.current = nextSound;
-    musicEnabledRef.current = nextMusic;
-    difficultyRef.current = nextDifficulty;
-    fireRateRef.current = nextFireRate;
-    showDamageFlashRef.current = savedDamageFlash === null || savedDamageFlash === 'true';
-    setSoundEnabled(nextSound);
-    setMusicEnabled(nextMusic);
-    setDifficulty(nextDifficulty);
-    setFireRate(nextFireRate);
-
-    if (!backgroundMusic.current || !soundsLoaded.current) return;
-    if (gameFocused.current && nextMusic && !pausedRef.current && !gameOverRef.current) {
-      await backgroundMusic.current.playAsync();
-    } else {
-      await backgroundMusic.current.pauseAsync();
-    }
   }, []);
 
-  const stopMusic = useCallback(async () => {
+  const stopMusic = useCallback(() => {
     try {
-      await backgroundMusic.current?.pauseAsync();
+      backgroundMusic.current?.pause();
     } catch (error) {
       console.warn('Music pause error:', error);
     }
   }, []);
 
-  const playExplosion = useCallback(() => {
-    if (soundEnabledRef.current && soundsLoaded.current) {
-      explosionSound.current?.replayAsync().catch(console.warn);
+  const playMusicIfAllowed = useCallback(() => {
+    const player = backgroundMusic.current;
+    if (!player) return;
+    player.loop = true;
+    player.volume = musicEnabledRef.current ? musicVolumeRef.current : 0;
+    player.muted = !musicEnabledRef.current;
+    if (gameFocused.current && musicEnabledRef.current && !pausedRef.current && !gameOverRef.current) {
+      player.play();
+    } else {
+      player.pause();
     }
   }, []);
 
-  const endGame = useCallback(() => {
+  const playOneShot = useCallback((source: number) => {
+    if (!soundEnabledRef.current || soundVolumeRef.current <= 0) return;
+    try {
+      const player = createAudioPlayer(source, 100);
+      player.volume = soundVolumeRef.current;
+      player.play();
+      setTimeout(() => {
+        try {
+          player.remove();
+        } catch {
+          // Already cleaned up by the native player.
+        }
+      }, 1400);
+    } catch (error) {
+      console.warn('Sound effect error:', error);
+    }
+  }, []);
+
+  const playShoot = useCallback(() => {
+    playOneShot(require('../assets/sounds/shoot.wav'));
+  }, [playOneShot]);
+
+  const playExplosion = useCallback(() => {
+    playOneShot(require('../assets/sounds/explosion.wav'));
+  }, [playOneShot]);
+
+  const syncSettings = useCallback(async () => {
+    const [
+      savedSound,
+      savedMusic,
+      savedDifficulty,
+      savedFireRate,
+      savedDamageFlash,
+      savedMusicVolume,
+      savedSoundVolume,
+    ] = await Promise.all([
+      AsyncStorage.getItem('soundEnabled'),
+      AsyncStorage.getItem('musicEnabled'),
+      AsyncStorage.getItem('difficulty'),
+      AsyncStorage.getItem('fireRate'),
+      AsyncStorage.getItem('showDamageFlash'),
+      AsyncStorage.getItem('musicVolume'),
+      AsyncStorage.getItem('soundVolume'),
+    ]);
+
+    const nextSound = savedSound === null || savedSound === 'true';
+    const nextMusic = savedMusic === null || savedMusic === 'true';
+    const nextDifficulty = normalizeDifficulty(savedDifficulty);
+    const nextFireRate = normalizeFireRate(savedFireRate);
+
+    soundEnabledRef.current = nextSound;
+    musicEnabledRef.current = nextMusic;
+    musicVolumeRef.current = toVolume(savedMusicVolume, 0.95);
+    soundVolumeRef.current = toVolume(savedSoundVolume, 0.9);
+    difficultyRef.current = nextDifficulty;
+    fireRateRef.current = nextFireRate;
+    showDamageFlashRef.current = savedDamageFlash === null || savedDamageFlash === 'true';
+    setDifficulty(nextDifficulty);
+    setFireRate(nextFireRate);
+    playMusicIfAllowed();
+  }, [playMusicIfAllowed]);
+
+  const startFreshGame = useCallback(
+    async (selectedDifficulty?: Difficulty) => {
+      await AsyncStorage.multiRemove(['paused', 'savedScore', SAVED_GAME_KEY]);
+      const nextDifficulty = selectedDifficulty ?? difficultyRef.current;
+      bulletsRef.current = [];
+      enemyBulletsRef.current = [];
+      enemiesRef.current = [];
+      powerUpsRef.current = [];
+      scoreRef.current = 0;
+      healthRef.current = MAX_HEALTH;
+      playerXRef.current = width / 2 - PLAYER_WIDTH / 2;
+      playerYRef.current = height - PLAYER_HEIGHT - 50;
+      difficultyRef.current = nextDifficulty;
+      lastShotAt.current = 0;
+      enemySpawnTimer.current = 0;
+      powerUpSpawnTimer.current = 0;
+      lastDamageAt.current = 0;
+      gameOverRef.current = false;
+      pausedRef.current = false;
+      isTouching.current = false;
+      setPlayerX(playerXRef.current);
+      setPlayerY(playerYRef.current);
+      setBullets([]);
+      setEnemyBullets([]);
+      setEnemies([]);
+      setPowerUps([]);
+      setExplosions([]);
+      setScore(0);
+      setHealth(MAX_HEALTH);
+      setDifficulty(nextDifficulty);
+      setGameOver(false);
+      setPaused(false);
+      setShieldActive(false);
+      setDoubleShotActive(false);
+      playMusicIfAllowed();
+    },
+    [playMusicIfAllowed]
+  );
+
+  const endGame = useCallback(async () => {
     if (gameOverRef.current) return;
     gameOverRef.current = true;
     setGameOver(true);
     isTouching.current = false;
+    await AsyncStorage.multiRemove(['paused', 'savedScore', SAVED_GAME_KEY]);
     stopMusic();
     playExplosion();
-    Alert.alert('Game Over', `Score: ${scoreRef.current}`, [{ text: 'Restart', onPress: () => resetGame() }]);
   }, [playExplosion, stopMusic]);
 
   const damagePlayer = useCallback(
@@ -183,7 +353,6 @@ export default function GameScreen({ navigation }: any) {
         setTimeout(() => setDamageFlash(false), 110);
       }
       playExplosion();
-
       if (nextHealth <= 0) {
         endGame();
       }
@@ -192,90 +361,68 @@ export default function GameScreen({ navigation }: any) {
     [endGame, playExplosion]
   );
 
-  const resetGame = useCallback(async () => {
-    await AsyncStorage.removeItem('paused');
-    await AsyncStorage.removeItem('savedScore');
-    bulletsRef.current = [];
-    enemyBulletsRef.current = [];
-    enemiesRef.current = [];
-    powerUpsRef.current = [];
-    scoreRef.current = 0;
-    healthRef.current = MAX_HEALTH;
-    playerXRef.current = width / 2 - PLAYER_WIDTH / 2;
-    playerYRef.current = height - PLAYER_HEIGHT - 50;
-    lastShotAt.current = 0;
-    enemySpawnTimer.current = 0;
-    powerUpSpawnTimer.current = 0;
-    lastDamageAt.current = 0;
-    gameOverRef.current = false;
-    pausedRef.current = false;
-    isTouching.current = false;
-    setPlayerX(playerXRef.current);
-    setPlayerY(playerYRef.current);
-    setBullets([]);
-    setEnemyBullets([]);
-    setEnemies([]);
-    setPowerUps([]);
-    setExplosions([]);
-    setScore(0);
-    setHealth(MAX_HEALTH);
-    setGameOver(false);
-    setPaused(false);
-    await syncSettings();
-  }, [syncSettings]);
-
   useEffect(() => {
-    const loadSounds = async () => {
+    const setupAudio = async () => {
       try {
-        shootSound.current = new Audio.Sound();
-        explosionSound.current = new Audio.Sound();
-        backgroundMusic.current = new Audio.Sound();
-
-        await Promise.all([
-          shootSound.current.loadAsync(require('../assets/sounds/shoot.wav')),
-          explosionSound.current.loadAsync(require('../assets/sounds/explosion.wav')),
-          backgroundMusic.current.loadAsync(require('../assets/sounds/background.mp3')),
-        ]);
-        await backgroundMusic.current.setIsLoopingAsync(true);
-        soundsLoaded.current = true;
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          interruptionMode: 'doNotMix',
+          interruptionModeAndroid: 'doNotMix',
+          allowsRecording: false,
+          shouldPlayInBackground: false,
+          shouldRouteThroughEarpiece: false,
+        });
+        await setIsAudioActiveAsync(true);
+        backgroundMusic.current = createAudioPlayer(require('../assets/sounds/background.mp3'), 250);
+        backgroundMusic.current.loop = true;
+        backgroundMusic.current.volume = musicVolumeRef.current;
         await syncSettings();
       } catch (error) {
-        console.warn('Sound loading error:', error);
+        console.warn('Audio setup error:', error);
       }
     };
 
-    loadSounds();
-
+    setupAudio();
     return () => {
       if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
-      shootSound.current?.unloadAsync();
-      explosionSound.current?.unloadAsync();
-      backgroundMusic.current?.unloadAsync();
+      backgroundMusic.current?.remove();
+      setIsAudioActiveAsync(false).catch(() => undefined);
     };
   }, [syncSettings]);
 
   useEffect(() => {
     const focus = navigation.addListener('focus', async () => {
       gameFocused.current = true;
-      const [isPaused, savedScore] = await Promise.all([
+      const [isPaused, savedState, selectedDifficulty] = await Promise.all([
         AsyncStorage.getItem('paused'),
-        AsyncStorage.getItem('savedScore'),
+        AsyncStorage.getItem(SAVED_GAME_KEY),
+        AsyncStorage.getItem('selectedDifficulty'),
       ]);
       await syncSettings();
 
-      if (scoreRef.current === 0 && savedScore !== null) {
-        const restoredScore = parseInt(savedScore, 10) || 0;
-        scoreRef.current = restoredScore;
-        setScore(restoredScore);
-      } else if (score === null) {
+      const routeWantsNewGame = Boolean(route?.params?.newGame);
+      if (routeWantsNewGame) {
+        await startFreshGame(normalizeDifficulty(selectedDifficulty));
+        navigation.setParams({ newGame: undefined });
+        return;
+      }
+
+      if (isPaused === 'true' && savedState) {
+        try {
+          const parsed = JSON.parse(savedState) as SavedGameState;
+          applyState(parsed);
+          await AsyncStorage.removeItem('paused');
+        } catch {
+          await startFreshGame();
+        }
+      } else if (scoreRef.current === 0 && score === null) {
         setScore(0);
       }
 
       pausedRef.current = false;
       setPaused(false);
-      if (isPaused !== 'true') {
-        await AsyncStorage.removeItem('paused');
-      }
+      gameOverRef.current = false;
+      playMusicIfAllowed();
     });
 
     const blur = navigation.addListener('blur', () => {
@@ -287,19 +434,18 @@ export default function GameScreen({ navigation }: any) {
       focus();
       blur();
     };
-  }, [navigation, score, stopMusic, syncSettings]);
+  }, [navigation, playMusicIfAllowed, route?.params?.newGame, score, startFreshGame, stopMusic, syncSettings]);
 
   useEffect(() => {
     const beforeRemove = navigation.addListener('beforeRemove', async () => {
-      if (!gameOverRef.current) {
-        await AsyncStorage.setItem('paused', 'true');
-        await AsyncStorage.setItem('savedScore', scoreRef.current.toString());
+      if (!gameOverRef.current && scoreRef.current > 0) {
+        await savePausedGame();
       }
-      await stopMusic();
+      stopMusic();
     });
 
     return beforeRemove;
-  }, [navigation, stopMusic]);
+  }, [navigation, savePausedGame, stopMusic]);
 
   useEffect(() => {
     shieldActiveRef.current = shieldActive;
@@ -337,12 +483,10 @@ export default function GameScreen({ navigation }: any) {
 
           bulletsRef.current = [...bulletsRef.current, ...nextBullets];
           lastShotAt.current = now;
-          if (soundEnabledRef.current && soundsLoaded.current) {
-            shootSound.current?.replayAsync().catch(console.warn);
-          }
+          playShoot();
         }
 
-        enemySpawnTimer.current += now - (lastFrameAt.current - dt * 1000);
+        enemySpawnTimer.current += dt * 1000;
         if (enemySpawnTimer.current >= config.spawnMs) {
           enemySpawnTimer.current = 0;
           enemiesRef.current = [
@@ -356,17 +500,23 @@ export default function GameScreen({ navigation }: any) {
           ];
         }
 
-        powerUpSpawnTimer.current += now - (lastFrameAt.current - dt * 1000);
-        if (powerUpSpawnTimer.current >= 6000) {
+        powerUpSpawnTimer.current += dt * 1000;
+        if (powerUpSpawnTimer.current >= 5200) {
           powerUpSpawnTimer.current = 0;
-          if (Math.random() < 0.55) {
+          if (Math.random() < 0.65) {
+            const roll = Math.random();
+            const type: PowerUp['type'] = healthRef.current < MAX_HEALTH && roll < 0.38
+              ? 'health'
+              : roll < 0.69
+                ? 'shield'
+                : 'double';
             powerUpsRef.current = [
               ...powerUpsRef.current,
               {
                 id: uniqueId(),
                 x: Math.random() * (width - 40),
                 y: -40,
-                type: Math.random() < 0.5 ? 'shield' : 'double',
+                type,
               },
             ];
           }
@@ -401,9 +551,7 @@ export default function GameScreen({ navigation }: any) {
           .filter((enemy) => enemy.y < height + ENEMY_HEIGHT);
         enemyBulletsRef.current = nextEnemyBullets;
 
-        const remainingBullets: Bullet[] = [];
         const remainingEnemies: Enemy[] = [];
-
         for (const enemy of enemiesRef.current) {
           const hitBullet = bulletsRef.current.find((bullet) =>
             overlaps(
@@ -421,15 +569,7 @@ export default function GameScreen({ navigation }: any) {
             remainingEnemies.push(enemy);
           }
         }
-
-        for (const bullet of bulletsRef.current) {
-          if (!remainingBullets.some((remaining) => remaining.id === bullet.id)) {
-            remainingBullets.push(bullet);
-          }
-        }
-
         enemiesRef.current = remainingEnemies;
-        bulletsRef.current = remainingBullets;
 
         const playerBox = {
           x: playerXRef.current + 8,
@@ -474,9 +614,13 @@ export default function GameScreen({ navigation }: any) {
             if (powerUp.type === 'shield') {
               setShieldActive(true);
               setTimeout(() => setShieldActive(false), 10000);
-            } else {
+            } else if (powerUp.type === 'double') {
               setDoubleShotActive(true);
               setTimeout(() => setDoubleShotActive(false), 10000);
+            } else {
+              const healed = clamp(healthRef.current + 25, 0, MAX_HEALTH);
+              healthRef.current = healed;
+              setHealth(healed);
             }
           }
           return !pickedUp;
@@ -496,7 +640,7 @@ export default function GameScreen({ navigation }: any) {
     return () => {
       if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
     };
-  }, [damagePlayer, playExplosion]);
+  }, [damagePlayer, playExplosion, playShoot]);
 
   const movePlayer = (x: number, y: number) => {
     const clampedX = clamp(x - PLAYER_WIDTH / 2, 0, width - PLAYER_WIDTH);
@@ -539,31 +683,25 @@ export default function GameScreen({ navigation }: any) {
           pausedRef.current = true;
           setPaused(true);
           isTouching.current = false;
-          await stopMusic();
-          await AsyncStorage.setItem('paused', 'true');
-          await AsyncStorage.setItem('savedScore', scoreRef.current.toString());
+          stopMusic();
+          await savePausedGame();
           navigation.navigate('Menu');
         }}
       >
-        <Text style={styles.pauseText}>Pause</Text>
+        <Text style={styles.pauseText}>⏸ Pause</Text>
       </TouchableOpacity>
 
       <View style={styles.hud}>
         <Text style={styles.score}>Score: {score}</Text>
-        <Text style={styles.modeText}>{difficulty.toUpperCase()} | {fireRate.toUpperCase()}</Text>
+        <Text style={styles.modeText}>{difficultyConfig[difficulty].label.toUpperCase()} | {fireRate.toUpperCase()}</Text>
         <View style={styles.lifeFrame}>
-          <View style={[styles.lifeFill, { width: `${health}%` }]} />
+          <View style={[styles.lifeFill, { width: `${health}%`, backgroundColor: lifeColor(health) }]} />
         </View>
       </View>
 
       <Image source={require('../assets/play/player.png')} style={[styles.player, { left: playerX, top: playerY }]} />
       {shieldActive && (
-        <View
-          style={[
-            styles.shield,
-            { left: playerX - 10, top: playerY - 10 },
-          ]}
-        />
+        <View style={[styles.shield, { left: playerX - 10, top: playerY - 10 }]} />
       )}
       {bullets.map((bullet) => (
         <View key={bullet.id} style={[styles.bullet, { left: bullet.x, top: bullet.y }]} />
@@ -571,17 +709,21 @@ export default function GameScreen({ navigation }: any) {
       {enemyBullets.map((bullet) => (
         <View key={bullet.id} style={[styles.enemyBullet, { left: bullet.x, top: bullet.y }]} />
       ))}
-      {powerUps.map((powerUp) => (
-        <Image
-          key={powerUp.id}
-          source={
-            powerUp.type === 'shield'
-              ? require('../assets/powerups/shield.png')
-              : require('../assets/powerups/double.png')
-          }
-          style={[styles.powerUp, { left: powerUp.x, top: powerUp.y }]}
-        />
-      ))}
+      {powerUps.map((powerUp) =>
+        powerUp.type === 'health' ? (
+          <Text key={powerUp.id} style={[styles.healthPower, { left: powerUp.x, top: powerUp.y }]}>♥</Text>
+        ) : (
+          <Image
+            key={powerUp.id}
+            source={
+              powerUp.type === 'shield'
+                ? require('../assets/powerups/shield.png')
+                : require('../assets/powerups/double.png')
+            }
+            style={[styles.powerUp, { left: powerUp.x, top: powerUp.y }]}
+          />
+        )
+      )}
       {enemies.map((enemy) => (
         <Image
           key={enemy.id}
@@ -601,6 +743,21 @@ export default function GameScreen({ navigation }: any) {
 
       {paused && <Text style={styles.pausedText}>Paused</Text>}
       {damageFlash && <View pointerEvents="none" style={styles.damageFlash} />}
+
+      {gameOver && (
+        <View style={styles.gameOverOverlay} pointerEvents="auto">
+          <View style={styles.gameOverPanel}>
+            <Text style={styles.gameOverTitle}>Mission Failed</Text>
+            <Text style={styles.gameOverScore}>Score {scoreRef.current}</Text>
+            <TouchableOpacity style={styles.goldButton} onPress={() => startFreshGame(difficultyRef.current)}>
+              <Text style={styles.goldButtonText}>🔄 Restart</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.darkButton} onPress={() => navigation.navigate('Menu')}>
+              <Text style={styles.darkButtonText}>⬅️ Back</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -635,7 +792,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 34,
     left: 16,
-    right: 96,
+    right: 118,
     zIndex: 20,
   },
   score: {
@@ -645,39 +802,39 @@ const styles = StyleSheet.create({
   },
   modeText: {
     marginTop: 2,
-    color: '#9fd8ff',
+    color: '#ffd166',
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   lifeFrame: {
     marginTop: 8,
-    height: 12,
+    height: 13,
     borderWidth: 1,
-    borderColor: '#fff',
+    borderColor: '#ffffff',
     backgroundColor: 'rgba(255,255,255,0.16)',
     borderRadius: 8,
     overflow: 'hidden',
   },
   lifeFill: {
     height: '100%',
-    backgroundColor: '#2af598',
+    borderRadius: 8,
   },
   pauseBtn: {
     position: 'absolute',
     top: 36,
     right: 16,
     paddingVertical: 10,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(16, 23, 38, 0.82)',
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(16, 23, 38, 0.86)',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(255,255,255,0.22)',
     zIndex: 30,
   },
   pauseText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
   },
   player: {
     position: 'absolute',
@@ -732,6 +889,19 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
     zIndex: 8,
   },
+  healthPower: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    color: '#ff2244',
+    fontSize: 34,
+    fontWeight: '900',
+    zIndex: 8,
+    textShadowColor: 'rgba(255,255,255,0.8)',
+    textShadowRadius: 5,
+  },
   explosion: {
     position: 'absolute',
     width: 80,
@@ -753,5 +923,62 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255, 30, 48, 0.2)',
     zIndex: 45,
+  },
+  gameOverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 22,
+    backgroundColor: 'rgba(0,0,0,0.68)',
+    zIndex: 80,
+  },
+  gameOverPanel: {
+    width: '100%',
+    maxWidth: 360,
+    padding: 22,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 214, 102, 0.55)',
+    backgroundColor: 'rgba(8, 13, 24, 0.96)',
+  },
+  gameOverTitle: {
+    color: '#ffd166',
+    fontSize: 30,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  gameOverScore: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 18,
+  },
+  goldButton: {
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#ffd166',
+    marginTop: 10,
+  },
+  goldButtonText: {
+    color: '#15100a',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  darkButton: {
+    minHeight: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginTop: 10,
+  },
+  darkButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '800',
   },
 });
