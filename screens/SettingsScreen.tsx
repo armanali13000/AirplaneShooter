@@ -1,8 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
-  LayoutChangeEvent,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -32,50 +30,29 @@ const normalizeVolume = (value: string | null, fallback: number) => {
   return Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 1)) : fallback;
 };
 
-function VolumeSlider({
+const volumeOptions = [
+  { label: 'Off', value: 0 },
+  { label: 'Low', value: 0.25 },
+  { label: 'Med', value: 0.5 },
+  { label: 'High', value: 0.75 },
+  { label: 'Max', value: 1 },
+];
+
+function VolumeLevelControl({
   label,
   value,
   onChange,
-  onComplete,
-  onSliding,
+  onSave,
 }: {
   label: string;
   value: number;
   onChange: (value: number) => void;
-  onComplete: (value: number) => void;
-  onSliding: (sliding: boolean) => void;
+  onSave: (value: number) => void;
 }) {
-  const trackWidthRef = useRef(1);
-  const latestValueRef = useRef(value);
-
-  const updateFromX = (x: number) => {
-    const nextValue = Math.max(0, Math.min(x / trackWidthRef.current, 1));
-    const rounded = Number(nextValue.toFixed(2));
-    latestValueRef.current = rounded;
-    onChange(rounded);
+  const saveValue = (nextValue: number) => {
+    onChange(nextValue);
+    onSave(nextValue);
   };
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (event) => {
-        onSliding(true);
-        updateFromX(event.nativeEvent.locationX);
-      },
-      onPanResponderMove: (event) => {
-        updateFromX(event.nativeEvent.locationX);
-      },
-      onPanResponderRelease: () => {
-        onSliding(false);
-        onComplete(latestValueRef.current);
-      },
-      onPanResponderTerminate: () => {
-        onSliding(false);
-        onComplete(latestValueRef.current);
-      },
-    })
-  ).current;
 
   return (
     <View style={styles.sliderBlock}>
@@ -83,20 +60,21 @@ function VolumeSlider({
         <Text style={styles.optionLabel}>{label}</Text>
         <Text style={styles.sliderValue}>{Math.round(value * 100)}%</Text>
       </View>
-      <View style={styles.sliderLabels}>
-        <Text style={styles.sliderHint}>Low</Text>
-        <Text style={styles.sliderHint}>High</Text>
-      </View>
-      <View
-        style={styles.sliderTrack}
-        onLayout={(event: LayoutChangeEvent) => {
-          trackWidthRef.current = event.nativeEvent.layout.width;
-        }}
-        {...panResponder.panHandlers}
-      >
-        <View style={styles.sliderRail} />
-        <View style={[styles.sliderFill, { width: `${value * 100}%` }]} />
-        <View style={[styles.sliderThumb, { left: `${value * 100}%` }]} />
+      <View style={styles.volumeOptions}>
+        {volumeOptions.map((option) => {
+          const active = Math.abs(value - option.value) < 0.13;
+          return (
+            <Pressable
+              key={option.label}
+              style={[styles.volumeOption, active && styles.volumeOptionActive]}
+              onPress={() => saveValue(option.value)}
+            >
+              <Text style={[styles.volumeOptionText, active && styles.volumeOptionTextActive]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
@@ -108,7 +86,6 @@ export default function SettingsScreen({ navigation }: any) {
   const [showDamageFlash, setShowDamageFlash] = useState(true);
   const [musicVolume, setMusicVolume] = useState(0.95);
   const [soundVolume, setSoundVolume] = useState(0.9);
-  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -184,27 +161,21 @@ export default function SettingsScreen({ navigation }: any) {
         <Text style={styles.subtitle}>Premium control deck</Text>
       </View>
 
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={styles.contentInner}
-        scrollEnabled={scrollEnabled}
-      >
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Audio</Text>
-          <Text style={styles.optionHint}>Slide to 0% to turn audio off.</Text>
-          <VolumeSlider
+          <Text style={styles.optionHint}>Set to Off to turn audio off.</Text>
+          <VolumeLevelControl
             label="Sound Effects"
             value={soundVolume}
             onChange={setSoundVolume}
-            onComplete={saveSoundVolume}
-            onSliding={(sliding) => setScrollEnabled(!sliding)}
+            onSave={saveSoundVolume}
           />
-          <VolumeSlider
+          <VolumeLevelControl
             label="Background Music"
             value={musicVolume}
             onChange={setMusicVolume}
-            onComplete={saveMusicVolume}
-            onSliding={(sliding) => setScrollEnabled(!sliding)}
+            onSave={saveMusicVolume}
           />
         </View>
 
@@ -267,7 +238,7 @@ export default function SettingsScreen({ navigation }: any) {
         </View>
 
         <View style={styles.infoPanel}>
-          <Text style={styles.infoText}>Version 2.0.0</Text>
+          <Text style={styles.infoText}>Version 2.0.2</Text>
           <Text style={styles.infoText}>Developed by Arman</Text>
         </View>
       </ScrollView>
@@ -381,46 +352,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
   },
-  sliderLabels: {
+  volumeOptions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
+    gap: 7,
+    marginTop: 12,
   },
-  sliderHint: {
-    color: '#9fb0ca',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  sliderTrack: {
-    height: 36,
+  volumeOption: {
+    flex: 1,
+    minHeight: 40,
+    alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
-    borderRadius: 12,
-  },
-  sliderRail: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 8,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
-  sliderFill: {
-    position: 'absolute',
-    left: 0,
-    height: 8,
-    borderRadius: 8,
+  volumeOptionActive: {
     backgroundColor: '#ffd166',
-  },
-  sliderThumb: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    marginLeft: -12,
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    borderWidth: 3,
     borderColor: '#ffd166',
+  },
+  volumeOptionText: {
+    color: '#dbe7ff',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  volumeOptionTextActive: {
+    color: '#15100a',
   },
   toggleButton: {
     minWidth: 64,

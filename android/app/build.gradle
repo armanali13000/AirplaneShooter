@@ -92,8 +92,8 @@ android {
         applicationId 'com.armanix.airshooter'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "2.0.0"
+        versionCode 4
+        versionName "2.0.2"
     }
     signingConfigs {
         debug {

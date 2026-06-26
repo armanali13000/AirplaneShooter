@@ -28,6 +28,9 @@ const POWER_UP_SPEED = 150;
 const DAMAGE_COOLDOWN_MS = 450;
 const SAVED_GAME_KEY = 'savedGameState';
 const HIGH_SCORE_KEY = 'highScore';
+const MUSIC_SOUND = require('../assets/sounds/background.mp3');
+const SHOOT_SOUND = require('../assets/sounds/shoot.wav');
+const EXPLOSION_SOUND = require('../assets/sounds/explosion.wav');
 
 type Difficulty = 'easy' | 'medium' | 'hard' | 'veryHard';
 type FireRate = 'steady' | 'fast' | 'rapid';
@@ -37,6 +40,7 @@ type EnemyBullet = { id: number; x: number; y: number };
 type Explosion = { id: number; x: number; y: number; createdAt: number };
 type PowerUp = { id: number; x: number; y: number; type: 'shield' | 'double' | 'health' };
 type SoundRef = Audio.Sound;
+type SoundSlot = { sound: SoundRef; source: number };
 type SavedGameState = {
   playerX: number;
   playerY: number;
@@ -152,10 +156,11 @@ export default function GameScreen({ navigation, route }: any) {
   const lastDamageAt = useRef(0);
   const animationFrame = useRef<number | null>(null);
   const gameFocused = useRef(false);
+  const musicSyncing = useRef(false);
 
   const backgroundMusic = useRef<SoundRef | null>(null);
-  const shootPlayers = useRef<SoundRef[]>([]);
-  const explosionPlayers = useRef<SoundRef[]>([]);
+  const shootPlayers = useRef<SoundSlot[]>([]);
+  const explosionPlayers = useRef<SoundSlot[]>([]);
   const shootPlayerIndex = useRef(0);
   const explosionPlayerIndex = useRef(0);
 
@@ -218,24 +223,60 @@ export default function GameScreen({ navigation, route }: any) {
     backgroundMusic.current?.pauseAsync().catch(() => undefined);
   }, []);
 
-  const playMusicIfAllowed = useCallback(() => {
+  const playMusicIfAllowed = useCallback(async () => {
     const player = backgroundMusic.current;
-    if (!player) return;
-    player.setVolumeAsync(musicVolumeRef.current).catch(() => undefined);
-    if (gameFocused.current && musicVolumeRef.current > 0 && !pausedRef.current && !gameOverRef.current) {
-      player.playAsync().catch(() => undefined);
-    } else {
-      player.pauseAsync().catch(() => undefined);
+    if (!player || musicSyncing.current) return;
+    musicSyncing.current = true;
+    try {
+      const status = await player.getStatusAsync();
+      if (!status.isLoaded) {
+        await player.loadAsync(MUSIC_SOUND, {
+          isLooping: true,
+          shouldPlay: false,
+          volume: musicVolumeRef.current,
+        });
+      }
+      await player.setIsLoopingAsync(true);
+      await player.setVolumeAsync(musicVolumeRef.current);
+      if (gameFocused.current && musicVolumeRef.current > 0 && !pausedRef.current && !gameOverRef.current) {
+        const nextStatus = await player.getStatusAsync();
+        if (!nextStatus.isLoaded || !nextStatus.isPlaying) {
+          await player.playAsync();
+        }
+      } else {
+        await player.pauseAsync();
+      }
+    } catch (error) {
+      console.warn('Music playback error:', error);
+    } finally {
+      musicSyncing.current = false;
     }
   }, []);
 
-  const playPooledSound = useCallback((players: SoundRef[], indexRef: React.MutableRefObject<number>) => {
+  const playPooledSound = useCallback((players: SoundSlot[], indexRef: React.MutableRefObject<number>) => {
     if (soundVolumeRef.current <= 0 || players.length === 0) return;
-    const player = players[indexRef.current % players.length];
+    const slot = players[indexRef.current % players.length];
     indexRef.current += 1;
-    player.setVolumeAsync(soundVolumeRef.current)
-      .then(() => player.replayAsync())
-      .catch(() => undefined);
+    const play = async () => {
+      try {
+        const status = await slot.sound.getStatusAsync();
+        if (!status.isLoaded) {
+          await slot.sound.loadAsync(slot.source, { volume: soundVolumeRef.current });
+        }
+        await slot.sound.setVolumeAsync(soundVolumeRef.current);
+        await slot.sound.setPositionAsync(0);
+        await slot.sound.playAsync();
+      } catch (error) {
+        try {
+          await slot.sound.unloadAsync();
+          await slot.sound.loadAsync(slot.source, { volume: soundVolumeRef.current });
+          await slot.sound.playAsync();
+        } catch (retryError) {
+          console.warn('Sound effect playback error:', retryError);
+        }
+      }
+    };
+    play();
   }, []);
 
   const playShoot = useCallback(() => {
@@ -275,11 +316,11 @@ export default function GameScreen({ navigation, route }: any) {
     showDamageFlashRef.current = savedDamageFlash === null || savedDamageFlash === 'true';
     setDifficulty(nextDifficulty);
     setFireRate(nextFireRate);
-    shootPlayers.current.forEach((player) => {
-      player.setVolumeAsync(nextSoundVolume).catch(() => undefined);
+    shootPlayers.current.forEach((slot) => {
+      slot.sound.setVolumeAsync(nextSoundVolume).catch(() => undefined);
     });
-    explosionPlayers.current.forEach((player) => {
-      player.setVolumeAsync(nextSoundVolume).catch(() => undefined);
+    explosionPlayers.current.forEach((slot) => {
+      slot.sound.setVolumeAsync(nextSoundVolume).catch(() => undefined);
     });
     playMusicIfAllowed();
   }, [playMusicIfAllowed]);
@@ -377,22 +418,22 @@ export default function GameScreen({ navigation, route }: any) {
           playThroughEarpieceAndroid: false,
         });
         const music = await Audio.Sound.createAsync(
-          require('../assets/sounds/background.mp3'),
+          MUSIC_SOUND,
           { isLooping: true, shouldPlay: false, volume: musicVolumeRef.current }
         );
         const shootPool = await Promise.all(
           Array.from({ length: 6 }, () =>
-            Audio.Sound.createAsync(require('../assets/sounds/shoot.wav'), { volume: soundVolumeRef.current })
+            Audio.Sound.createAsync(SHOOT_SOUND, { volume: soundVolumeRef.current })
           )
         );
         const explosionPool = await Promise.all(
           Array.from({ length: 5 }, () =>
-            Audio.Sound.createAsync(require('../assets/sounds/explosion.wav'), { volume: soundVolumeRef.current })
+            Audio.Sound.createAsync(EXPLOSION_SOUND, { volume: soundVolumeRef.current })
           )
         );
         backgroundMusic.current = music.sound;
-        shootPlayers.current = shootPool.map((item) => item.sound);
-        explosionPlayers.current = explosionPool.map((item) => item.sound);
+        shootPlayers.current = shootPool.map((item) => ({ sound: item.sound, source: SHOOT_SOUND }));
+        explosionPlayers.current = explosionPool.map((item) => ({ sound: item.sound, source: EXPLOSION_SOUND }));
         await syncSettings();
         await loadHighScore();
       } catch (error) {
@@ -404,8 +445,8 @@ export default function GameScreen({ navigation, route }: any) {
     return () => {
       if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
       backgroundMusic.current?.unloadAsync();
-      shootPlayers.current.forEach((player) => player.unloadAsync());
-      explosionPlayers.current.forEach((player) => player.unloadAsync());
+      shootPlayers.current.forEach((slot) => slot.sound.unloadAsync());
+      explosionPlayers.current.forEach((slot) => slot.sound.unloadAsync());
     };
   }, [loadHighScore, syncSettings]);
 
@@ -466,6 +507,15 @@ export default function GameScreen({ navigation, route }: any) {
 
     return beforeRemove;
   }, [navigation, savePausedGame, stopMusic]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (gameFocused.current && !pausedRef.current && !gameOverRef.current && musicVolumeRef.current > 0) {
+        playMusicIfAllowed();
+      }
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [playMusicIfAllowed]);
 
   useEffect(() => {
     shieldActiveRef.current = shieldActive;
