@@ -3,16 +3,14 @@ import {
   Dimensions,
   Image,
   PanResponder,
+  Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import {
-  createAudioPlayer,
-  setAudioModeAsync,
-  setIsAudioActiveAsync,
-} from 'expo-audio';
+  Audio,
+} from 'expo-av';
 import LottieView from 'lottie-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -29,6 +27,7 @@ const ENEMY_BULLET_SPEED = 430;
 const POWER_UP_SPEED = 150;
 const DAMAGE_COOLDOWN_MS = 450;
 const SAVED_GAME_KEY = 'savedGameState';
+const HIGH_SCORE_KEY = 'highScore';
 
 type Difficulty = 'easy' | 'medium' | 'hard' | 'veryHard';
 type FireRate = 'steady' | 'fast' | 'rapid';
@@ -37,7 +36,7 @@ type Enemy = { id: number; x: number; y: number; shootTimer: number };
 type EnemyBullet = { id: number; x: number; y: number };
 type Explosion = { id: number; x: number; y: number; createdAt: number };
 type PowerUp = { id: number; x: number; y: number; type: 'shield' | 'double' | 'health' };
-type AudioPlayerRef = ReturnType<typeof createAudioPlayer>;
+type SoundRef = Audio.Sound;
 type SavedGameState = {
   playerX: number;
   playerY: number;
@@ -62,16 +61,16 @@ const difficultyConfig: Record<
   Difficulty,
   { label: string; enemySpeed: number; spawnMs: number; enemyFireMs: number; bulletDamage: number; collisionDamage: number }
 > = {
-  easy: { label: 'Easy', enemySpeed: 165, spawnMs: 1750, enemyFireMs: 2450, bulletDamage: 16, collisionDamage: 26 },
-  medium: { label: 'Medium', enemySpeed: 225, spawnMs: 1350, enemyFireMs: 1900, bulletDamage: 24, collisionDamage: 34 },
-  hard: { label: 'Hard', enemySpeed: 295, spawnMs: 1050, enemyFireMs: 1450, bulletDamage: 31, collisionDamage: 43 },
-  veryHard: { label: 'Very Hard', enemySpeed: 370, spawnMs: 820, enemyFireMs: 1120, bulletDamage: 39, collisionDamage: 54 },
+  easy: { label: 'Easy', enemySpeed: 165, spawnMs: 1750, enemyFireMs: 1700, bulletDamage: 16, collisionDamage: 26 },
+  medium: { label: 'Medium', enemySpeed: 225, spawnMs: 1350, enemyFireMs: 1300, bulletDamage: 24, collisionDamage: 34 },
+  hard: { label: 'Hard', enemySpeed: 295, spawnMs: 1050, enemyFireMs: 980, bulletDamage: 31, collisionDamage: 43 },
+  veryHard: { label: 'Very Hard', enemySpeed: 370, spawnMs: 820, enemyFireMs: 760, bulletDamage: 39, collisionDamage: 54 },
 };
 
 const fireRateMs: Record<FireRate, number> = {
-  steady: 260,
-  fast: 190,
-  rapid: 135,
+  steady: 300,
+  fast: 230,
+  rapid: 170,
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
@@ -113,6 +112,7 @@ export default function GameScreen({ navigation, route }: any) {
   const [enemyBullets, setEnemyBullets] = useState<EnemyBullet[]>([]);
   const [enemies, setEnemies] = useState<Enemy[]>([]);
   const [score, setScore] = useState<number | null>(null);
+  const [highScore, setHighScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [explosions, setExplosions] = useState<Explosion[]>([]);
   const [shieldActive, setShieldActive] = useState(false);
@@ -131,6 +131,7 @@ export default function GameScreen({ navigation, route }: any) {
   const enemiesRef = useRef<Enemy[]>([]);
   const powerUpsRef = useRef<PowerUp[]>([]);
   const scoreRef = useRef(0);
+  const highScoreRef = useRef(0);
   const healthRef = useRef(MAX_HEALTH);
   const isTouching = useRef(false);
   const pausedRef = useRef(false);
@@ -152,7 +153,11 @@ export default function GameScreen({ navigation, route }: any) {
   const animationFrame = useRef<number | null>(null);
   const gameFocused = useRef(false);
 
-  const backgroundMusic = useRef<AudioPlayerRef | null>(null);
+  const backgroundMusic = useRef<SoundRef | null>(null);
+  const shootPlayers = useRef<SoundRef[]>([]);
+  const explosionPlayers = useRef<SoundRef[]>([]);
+  const shootPlayerIndex = useRef(0);
+  const explosionPlayerIndex = useRef(0);
 
   const applyState = (state: SavedGameState) => {
     playerXRef.current = state.playerX;
@@ -210,64 +215,45 @@ export default function GameScreen({ navigation, route }: any) {
   }, []);
 
   const stopMusic = useCallback(() => {
-    try {
-      backgroundMusic.current?.pause();
-    } catch (error) {
-      console.warn('Music pause error:', error);
-    }
+    backgroundMusic.current?.pauseAsync().catch(() => undefined);
   }, []);
 
   const playMusicIfAllowed = useCallback(() => {
     const player = backgroundMusic.current;
     if (!player) return;
-    player.loop = true;
-    player.volume = musicEnabledRef.current ? musicVolumeRef.current : 0;
-    player.muted = !musicEnabledRef.current;
-    if (gameFocused.current && musicEnabledRef.current && !pausedRef.current && !gameOverRef.current) {
-      player.play();
+    player.setVolumeAsync(musicVolumeRef.current).catch(() => undefined);
+    if (gameFocused.current && musicVolumeRef.current > 0 && !pausedRef.current && !gameOverRef.current) {
+      player.playAsync().catch(() => undefined);
     } else {
-      player.pause();
+      player.pauseAsync().catch(() => undefined);
     }
   }, []);
 
-  const playOneShot = useCallback((source: number) => {
-    if (!soundEnabledRef.current || soundVolumeRef.current <= 0) return;
-    try {
-      const player = createAudioPlayer(source, 100);
-      player.volume = soundVolumeRef.current;
-      player.play();
-      setTimeout(() => {
-        try {
-          player.remove();
-        } catch {
-          // Already cleaned up by the native player.
-        }
-      }, 1400);
-    } catch (error) {
-      console.warn('Sound effect error:', error);
-    }
+  const playPooledSound = useCallback((players: SoundRef[], indexRef: React.MutableRefObject<number>) => {
+    if (soundVolumeRef.current <= 0 || players.length === 0) return;
+    const player = players[indexRef.current % players.length];
+    indexRef.current += 1;
+    player.setVolumeAsync(soundVolumeRef.current)
+      .then(() => player.replayAsync())
+      .catch(() => undefined);
   }, []);
 
   const playShoot = useCallback(() => {
-    playOneShot(require('../assets/sounds/shoot.wav'));
-  }, [playOneShot]);
+    playPooledSound(shootPlayers.current, shootPlayerIndex);
+  }, [playPooledSound]);
 
   const playExplosion = useCallback(() => {
-    playOneShot(require('../assets/sounds/explosion.wav'));
-  }, [playOneShot]);
+    playPooledSound(explosionPlayers.current, explosionPlayerIndex);
+  }, [playPooledSound]);
 
   const syncSettings = useCallback(async () => {
     const [
-      savedSound,
-      savedMusic,
       savedDifficulty,
       savedFireRate,
       savedDamageFlash,
       savedMusicVolume,
       savedSoundVolume,
     ] = await Promise.all([
-      AsyncStorage.getItem('soundEnabled'),
-      AsyncStorage.getItem('musicEnabled'),
       AsyncStorage.getItem('difficulty'),
       AsyncStorage.getItem('fireRate'),
       AsyncStorage.getItem('showDamageFlash'),
@@ -275,20 +261,26 @@ export default function GameScreen({ navigation, route }: any) {
       AsyncStorage.getItem('soundVolume'),
     ]);
 
-    const nextSound = savedSound === null || savedSound === 'true';
-    const nextMusic = savedMusic === null || savedMusic === 'true';
     const nextDifficulty = normalizeDifficulty(savedDifficulty);
     const nextFireRate = normalizeFireRate(savedFireRate);
+    const nextMusicVolume = toVolume(savedMusicVolume, 0.95);
+    const nextSoundVolume = toVolume(savedSoundVolume, 0.9);
 
-    soundEnabledRef.current = nextSound;
-    musicEnabledRef.current = nextMusic;
-    musicVolumeRef.current = toVolume(savedMusicVolume, 0.95);
-    soundVolumeRef.current = toVolume(savedSoundVolume, 0.9);
+    soundEnabledRef.current = nextSoundVolume > 0;
+    musicEnabledRef.current = nextMusicVolume > 0;
+    musicVolumeRef.current = nextMusicVolume;
+    soundVolumeRef.current = nextSoundVolume;
     difficultyRef.current = nextDifficulty;
     fireRateRef.current = nextFireRate;
     showDamageFlashRef.current = savedDamageFlash === null || savedDamageFlash === 'true';
     setDifficulty(nextDifficulty);
     setFireRate(nextFireRate);
+    shootPlayers.current.forEach((player) => {
+      player.setVolumeAsync(nextSoundVolume).catch(() => undefined);
+    });
+    explosionPlayers.current.forEach((player) => {
+      player.setVolumeAsync(nextSoundVolume).catch(() => undefined);
+    });
     playMusicIfAllowed();
   }, [playMusicIfAllowed]);
 
@@ -364,18 +356,30 @@ export default function GameScreen({ navigation, route }: any) {
   useEffect(() => {
     const setupAudio = async () => {
       try {
-        await setAudioModeAsync({
-          playsInSilentMode: true,
-          interruptionMode: 'doNotMix',
-          interruptionModeAndroid: 'doNotMix',
-          allowsRecording: false,
-          shouldPlayInBackground: false,
-          shouldRouteThroughEarpiece: false,
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: false,
+          playThroughEarpieceAndroid: false,
         });
-        await setIsAudioActiveAsync(true);
-        backgroundMusic.current = createAudioPlayer(require('../assets/sounds/background.mp3'), 250);
-        backgroundMusic.current.loop = true;
-        backgroundMusic.current.volume = musicVolumeRef.current;
+        const music = await Audio.Sound.createAsync(
+          require('../assets/sounds/background.mp3'),
+          { isLooping: true, shouldPlay: false, volume: musicVolumeRef.current }
+        );
+        const shootPool = await Promise.all(
+          Array.from({ length: 6 }, () =>
+            Audio.Sound.createAsync(require('../assets/sounds/shoot.wav'), { volume: soundVolumeRef.current })
+          )
+        );
+        const explosionPool = await Promise.all(
+          Array.from({ length: 5 }, () =>
+            Audio.Sound.createAsync(require('../assets/sounds/explosion.wav'), { volume: soundVolumeRef.current })
+          )
+        );
+        backgroundMusic.current = music.sound;
+        shootPlayers.current = shootPool.map((item) => item.sound);
+        explosionPlayers.current = explosionPool.map((item) => item.sound);
         await syncSettings();
       } catch (error) {
         console.warn('Audio setup error:', error);
@@ -385,8 +389,9 @@ export default function GameScreen({ navigation, route }: any) {
     setupAudio();
     return () => {
       if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
-      backgroundMusic.current?.remove();
-      setIsAudioActiveAsync(false).catch(() => undefined);
+      backgroundMusic.current?.unloadAsync();
+      shootPlayers.current.forEach((player) => player.unloadAsync());
+      explosionPlayers.current.forEach((player) => player.unloadAsync());
     };
   }, [syncSettings]);
 
@@ -677,7 +682,7 @@ export default function GameScreen({ navigation, route }: any) {
     <View style={styles.container} {...panResponder.panHandlers}>
       <View style={styles.starsOne} pointerEvents="none" />
       <View style={styles.starsTwo} pointerEvents="none" />
-      <TouchableOpacity
+      <Pressable
         style={styles.pauseBtn}
         onPress={async () => {
           pausedRef.current = true;
@@ -689,7 +694,7 @@ export default function GameScreen({ navigation, route }: any) {
         }}
       >
         <Text style={styles.pauseText}>⏸ Pause</Text>
-      </TouchableOpacity>
+      </Pressable>
 
       <View style={styles.hud}>
         <Text style={styles.score}>Score: {score}</Text>
@@ -749,12 +754,12 @@ export default function GameScreen({ navigation, route }: any) {
           <View style={styles.gameOverPanel}>
             <Text style={styles.gameOverTitle}>Mission Failed</Text>
             <Text style={styles.gameOverScore}>Score {scoreRef.current}</Text>
-            <TouchableOpacity style={styles.goldButton} onPress={() => startFreshGame(difficultyRef.current)}>
+            <Pressable style={styles.goldButton} onPress={() => startFreshGame(difficultyRef.current)}>
               <Text style={styles.goldButtonText}>🔄 Restart</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.darkButton} onPress={() => navigation.navigate('Menu')}>
+            </Pressable>
+            <Pressable style={styles.darkButton} onPress={() => navigation.navigate('Menu')}>
               <Text style={styles.darkButtonText}>⬅️ Back</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       )}

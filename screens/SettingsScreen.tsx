@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   LayoutChangeEvent,
+  PanResponder,
+  Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -36,17 +36,46 @@ function VolumeSlider({
   label,
   value,
   onChange,
+  onComplete,
+  onSliding,
 }: {
   label: string;
   value: number;
   onChange: (value: number) => void;
+  onComplete: (value: number) => void;
+  onSliding: (sliding: boolean) => void;
 }) {
-  const [trackWidth, setTrackWidth] = useState(1);
+  const trackWidthRef = useRef(1);
+  const latestValueRef = useRef(value);
 
   const updateFromX = (x: number) => {
-    const nextValue = Math.max(0, Math.min(x / trackWidth, 1));
-    onChange(Number(nextValue.toFixed(2)));
+    const nextValue = Math.max(0, Math.min(x / trackWidthRef.current, 1));
+    const rounded = Number(nextValue.toFixed(2));
+    latestValueRef.current = rounded;
+    onChange(rounded);
   };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (event) => {
+        onSliding(true);
+        updateFromX(event.nativeEvent.locationX);
+      },
+      onPanResponderMove: (event) => {
+        updateFromX(event.nativeEvent.locationX);
+      },
+      onPanResponderRelease: () => {
+        onSliding(false);
+        onComplete(latestValueRef.current);
+      },
+      onPanResponderTerminate: () => {
+        onSliding(false);
+        onComplete(latestValueRef.current);
+      },
+    })
+  ).current;
 
   return (
     <View style={styles.sliderBlock}>
@@ -58,50 +87,40 @@ function VolumeSlider({
         <Text style={styles.sliderHint}>Low</Text>
         <Text style={styles.sliderHint}>High</Text>
       </View>
-      <TouchableOpacity
-        activeOpacity={0.9}
+      <View
         style={styles.sliderTrack}
-        onLayout={(event: LayoutChangeEvent) => setTrackWidth(event.nativeEvent.layout.width)}
-        onPress={(event) => updateFromX(event.nativeEvent.locationX)}
+        onLayout={(event: LayoutChangeEvent) => {
+          trackWidthRef.current = event.nativeEvent.layout.width;
+        }}
+        {...panResponder.panHandlers}
       >
+        <View style={styles.sliderRail} />
         <View style={[styles.sliderFill, { width: `${value * 100}%` }]} />
         <View style={[styles.sliderThumb, { left: `${value * 100}%` }]} />
-      </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 export default function SettingsScreen({ navigation }: any) {
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [musicEnabled, setMusicEnabled] = useState(true);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [fireRate, setFireRate] = useState<FireRate>('fast');
   const [showDamageFlash, setShowDamageFlash] = useState(true);
   const [musicVolume, setMusicVolume] = useState(0.95);
   const [soundVolume, setSoundVolume] = useState(0.9);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   useEffect(() => {
     const loadSettings = async () => {
-      const [
-        soundValue,
-        musicValue,
-        difficultyValue,
-        fireRateValue,
-        damageFlashValue,
-        musicVolumeValue,
-        soundVolumeValue,
-      ] = await Promise.all([
-        AsyncStorage.getItem('soundEnabled'),
-        AsyncStorage.getItem('musicEnabled'),
-        AsyncStorage.getItem('difficulty'),
-        AsyncStorage.getItem('fireRate'),
-        AsyncStorage.getItem('showDamageFlash'),
-        AsyncStorage.getItem('musicVolume'),
-        AsyncStorage.getItem('soundVolume'),
-      ]);
+      const [difficultyValue, fireRateValue, damageFlashValue, musicVolumeValue, soundVolumeValue] =
+        await Promise.all([
+          AsyncStorage.getItem('difficulty'),
+          AsyncStorage.getItem('fireRate'),
+          AsyncStorage.getItem('showDamageFlash'),
+          AsyncStorage.getItem('musicVolume'),
+          AsyncStorage.getItem('soundVolume'),
+        ]);
 
-      setSoundEnabled(soundValue === null || soundValue === 'true');
-      setMusicEnabled(musicValue === null || musicValue === 'true');
       setDifficulty(
         difficultyValue === 'easy' || difficultyValue === 'hard' || difficultyValue === 'veryHard'
           ? difficultyValue
@@ -117,18 +136,6 @@ export default function SettingsScreen({ navigation }: any) {
     loadSettings();
     return unsubscribe;
   }, [navigation]);
-
-  const toggleSound = async () => {
-    const newValue = !soundEnabled;
-    setSoundEnabled(newValue);
-    await AsyncStorage.setItem('soundEnabled', newValue.toString());
-  };
-
-  const toggleMusic = async () => {
-    const newValue = !musicEnabled;
-    setMusicEnabled(newValue);
-    await AsyncStorage.setItem('musicEnabled', newValue.toString());
-  };
 
   const toggleDamageFlash = async () => {
     const newValue = !showDamageFlash;
@@ -147,12 +154,10 @@ export default function SettingsScreen({ navigation }: any) {
   };
 
   const saveMusicVolume = async (value: number) => {
-    setMusicVolume(value);
     await AsyncStorage.setItem('musicVolume', value.toString());
   };
 
   const saveSoundVolume = async (value: number) => {
-    setSoundVolume(value);
     await AsyncStorage.setItem('soundVolume', value.toString());
   };
 
@@ -172,33 +177,35 @@ export default function SettingsScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>⬅️ Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>⚙️ Settings</Text>
+        <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>Back</Text>
+        </Pressable>
+        <Text style={styles.title}>Settings</Text>
         <Text style={styles.subtitle}>Premium control deck</Text>
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentInner}
+        scrollEnabled={scrollEnabled}
+      >
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Audio</Text>
-          <View style={styles.optionRow}>
-            <View style={styles.optionText}>
-              <Text style={styles.optionLabel}>🔊 Sound Effects</Text>
-              <Text style={styles.optionHint}>Shots, explosions, pickups</Text>
-            </View>
-            <Switch value={soundEnabled} onValueChange={toggleSound} thumbColor={soundEnabled ? '#ffd166' : '#8892a6'} />
-          </View>
-          <VolumeSlider label="Sound Effect Volume" value={soundVolume} onChange={saveSoundVolume} />
-
-          <View style={styles.optionRow}>
-            <View style={styles.optionText}>
-              <Text style={styles.optionLabel}>🎵 Background Music</Text>
-              <Text style={styles.optionHint}>Game music volume and on/off</Text>
-            </View>
-            <Switch value={musicEnabled} onValueChange={toggleMusic} thumbColor={musicEnabled ? '#ffd166' : '#8892a6'} />
-          </View>
-          <VolumeSlider label="Background Music Volume" value={musicVolume} onChange={saveMusicVolume} />
+          <Text style={styles.optionHint}>Slide to 0% to turn audio off.</Text>
+          <VolumeSlider
+            label="Sound Effects"
+            value={soundVolume}
+            onChange={setSoundVolume}
+            onComplete={saveSoundVolume}
+            onSliding={(sliding) => setScrollEnabled(!sliding)}
+          />
+          <VolumeSlider
+            label="Background Music"
+            value={musicVolume}
+            onChange={setMusicVolume}
+            onComplete={saveMusicVolume}
+            onSliding={(sliding) => setScrollEnabled(!sliding)}
+          />
         </View>
 
         <View style={styles.section}>
@@ -206,7 +213,7 @@ export default function SettingsScreen({ navigation }: any) {
           <Text style={styles.groupLabel}>Default Difficulty</Text>
           <View style={styles.segment}>
             {difficultyOptions.map((option) => (
-              <TouchableOpacity
+              <Pressable
                 key={option.value}
                 style={[styles.segmentButton, difficulty === option.value && styles.segmentButtonActive]}
                 onPress={() => saveDifficulty(option.value)}
@@ -214,14 +221,14 @@ export default function SettingsScreen({ navigation }: any) {
                 <Text style={[styles.segmentText, difficulty === option.value && styles.segmentTextActive]}>
                   {option.label}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             ))}
           </View>
 
           <Text style={styles.groupLabel}>Fire Rate</Text>
           <View style={styles.segment}>
             {fireRateOptions.map((option) => (
-              <TouchableOpacity
+              <Pressable
                 key={option.value}
                 style={[styles.segmentButton, fireRate === option.value && styles.segmentButtonActive]}
                 onPress={() => saveFireRate(option.value)}
@@ -229,27 +236,39 @@ export default function SettingsScreen({ navigation }: any) {
                 <Text style={[styles.segmentText, fireRate === option.value && styles.segmentTextActive]}>
                   {option.label}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             ))}
           </View>
 
           <View style={styles.optionRow}>
             <View style={styles.optionText}>
-              <Text style={styles.optionLabel}>💥 Damage Feedback</Text>
+              <Text style={styles.optionLabel}>Damage Feedback</Text>
               <Text style={styles.optionHint}>Red flash when your plane gets hit</Text>
             </View>
-            <Switch value={showDamageFlash} onValueChange={toggleDamageFlash} thumbColor={showDamageFlash ? '#ffd166' : '#8892a6'} />
+            <Pressable
+              style={[styles.toggleButton, showDamageFlash && styles.toggleButtonActive]}
+              onPress={toggleDamageFlash}
+            >
+              <Text style={[styles.toggleText, showDamageFlash && styles.toggleTextActive]}>
+                {showDamageFlash ? 'On' : 'Off'}
+              </Text>
+            </Pressable>
           </View>
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Game</Text>
-          <TouchableOpacity style={styles.actionButton} onPress={resetProgress}>
-            <Text style={styles.actionText}>🔄 Reset Saved Game</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('PrivacyPolicy')}>
-            <Text style={styles.actionText}>🔒 Privacy Policy</Text>
-          </TouchableOpacity>
+          <Pressable style={styles.actionButton} onPress={resetProgress}>
+            <Text style={styles.actionText}>Reset Saved Game</Text>
+          </Pressable>
+          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('PrivacyPolicy')}>
+            <Text style={styles.actionText}>Privacy Policy</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.infoPanel}>
+          <Text style={styles.infoText}>Version 1.0.0</Text>
+          <Text style={styles.infoText}>Developed by Arman</Text>
         </View>
       </ScrollView>
     </View>
@@ -347,8 +366,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   sliderBlock: {
-    marginTop: 14,
-    paddingTop: 12,
+    marginTop: 16,
+    paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.08)',
   },
@@ -373,9 +392,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sliderTrack: {
-    height: 28,
+    height: 36,
     justifyContent: 'center',
     marginTop: 2,
+    borderRadius: 12,
+  },
+  sliderRail: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   sliderFill: {
     position: 'absolute',
@@ -386,13 +414,35 @@ const styles = StyleSheet.create({
   },
   sliderThumb: {
     position: 'absolute',
-    width: 22,
-    height: 22,
-    marginLeft: -11,
+    width: 24,
+    height: 24,
+    marginLeft: -12,
     borderRadius: 12,
     backgroundColor: '#ffffff',
     borderWidth: 3,
     borderColor: '#ffd166',
+  },
+  toggleButton: {
+    minWidth: 64,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  toggleButtonActive: {
+    backgroundColor: '#ffd166',
+    borderColor: '#ffd166',
+  },
+  toggleText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  toggleTextActive: {
+    color: '#15100a',
   },
   groupLabel: {
     color: '#dbe7ff',
@@ -442,5 +492,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '900',
+  },
+  infoPanel: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  infoText: {
+    color: '#9fb0ca',
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 4,
   },
 });
