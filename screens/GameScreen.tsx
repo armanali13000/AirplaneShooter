@@ -284,6 +284,14 @@ export default function GameScreen({ navigation, route }: any) {
     playMusicIfAllowed();
   }, [playMusicIfAllowed]);
 
+  const loadHighScore = useCallback(async () => {
+    const savedHighScore = await AsyncStorage.getItem(HIGH_SCORE_KEY);
+    const parsedHighScore = savedHighScore ? parseInt(savedHighScore, 10) : 0;
+    const nextHighScore = Number.isFinite(parsedHighScore) ? parsedHighScore : 0;
+    highScoreRef.current = nextHighScore;
+    setHighScore(nextHighScore);
+  }, []);
+
   const startFreshGame = useCallback(
     async (selectedDifficulty?: Difficulty) => {
       await AsyncStorage.multiRemove(['paused', 'savedScore', SAVED_GAME_KEY]);
@@ -328,6 +336,11 @@ export default function GameScreen({ navigation, route }: any) {
     gameOverRef.current = true;
     setGameOver(true);
     isTouching.current = false;
+    if (scoreRef.current > highScoreRef.current) {
+      highScoreRef.current = scoreRef.current;
+      setHighScore(scoreRef.current);
+      await AsyncStorage.setItem(HIGH_SCORE_KEY, scoreRef.current.toString());
+    }
     await AsyncStorage.multiRemove(['paused', 'savedScore', SAVED_GAME_KEY]);
     stopMusic();
     playExplosion();
@@ -381,6 +394,7 @@ export default function GameScreen({ navigation, route }: any) {
         shootPlayers.current = shootPool.map((item) => item.sound);
         explosionPlayers.current = explosionPool.map((item) => item.sound);
         await syncSettings();
+        await loadHighScore();
       } catch (error) {
         console.warn('Audio setup error:', error);
       }
@@ -393,7 +407,7 @@ export default function GameScreen({ navigation, route }: any) {
       shootPlayers.current.forEach((player) => player.unloadAsync());
       explosionPlayers.current.forEach((player) => player.unloadAsync());
     };
-  }, [syncSettings]);
+  }, [loadHighScore, syncSettings]);
 
   useEffect(() => {
     const focus = navigation.addListener('focus', async () => {
@@ -404,6 +418,7 @@ export default function GameScreen({ navigation, route }: any) {
         AsyncStorage.getItem('selectedDifficulty'),
       ]);
       await syncSettings();
+      await loadHighScore();
 
       const routeWantsNewGame = Boolean(route?.params?.newGame);
       if (routeWantsNewGame) {
@@ -439,7 +454,7 @@ export default function GameScreen({ navigation, route }: any) {
       focus();
       blur();
     };
-  }, [navigation, playMusicIfAllowed, route?.params?.newGame, score, startFreshGame, stopMusic, syncSettings]);
+  }, [loadHighScore, navigation, playMusicIfAllowed, route?.params?.newGame, score, startFreshGame, stopMusic, syncSettings]);
 
   useEffect(() => {
     const beforeRemove = navigation.addListener('beforeRemove', async () => {
@@ -752,8 +767,9 @@ export default function GameScreen({ navigation, route }: any) {
       {gameOver && (
         <View style={styles.gameOverOverlay} pointerEvents="auto">
           <View style={styles.gameOverPanel}>
-            <Text style={styles.gameOverTitle}>Mission Failed</Text>
+            <Text style={styles.gameOverTitle}>Game Over</Text>
             <Text style={styles.gameOverScore}>Score {scoreRef.current}</Text>
+            <Text style={styles.gameOverHighScore}>High Score {highScore}</Text>
             <Pressable style={styles.goldButton} onPress={() => startFreshGame(difficultyRef.current)}>
               <Text style={styles.goldButtonText}>🔄 Restart</Text>
             </Pressable>
@@ -958,6 +974,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     marginTop: 8,
+  },
+  gameOverHighScore: {
+    color: '#ffd166',
+    fontSize: 16,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginTop: 6,
     marginBottom: 18,
   },
   goldButton: {
