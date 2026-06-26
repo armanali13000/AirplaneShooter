@@ -673,13 +673,15 @@ export default function GameScreen({ navigation, route }: any) {
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => !pausedRef.current && !gameOverRef.current,
+      onMoveShouldSetPanResponder: () => !pausedRef.current && !gameOverRef.current,
       onPanResponderGrant: (_, gestureState) => {
+        if (pausedRef.current || gameOverRef.current) return;
         isTouching.current = true;
         movePlayer(gestureState.moveX, gestureState.moveY);
       },
       onPanResponderMove: (_, gestureState) => {
+        if (pausedRef.current || gameOverRef.current) return;
         movePlayer(gestureState.moveX, gestureState.moveY);
       },
       onPanResponderRelease: () => {
@@ -786,6 +788,8 @@ export default function GameScreen({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#02040d',
     overflow: 'hidden',
   },
@@ -803,11 +807,12 @@ const styles = StyleSheet.create({
   },
   starsTwo: {
     position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     width: '100%',
     height: '100%',
-    borderColor: 'rgba(67, 179, 255, 0.16)',
-    borderLeftWidth: 18,
-    borderRightWidth: 18,
   },
   hud: {
     position: 'absolute',
